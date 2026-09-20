@@ -1,1 +1,11 @@
 node_modules/
+*.apk
+release/
+build/
+.DS_Store
+
+# JDK and Gradle build outputs
+HosterApp/jdk-17.0.10+7/
+HosterApp/android/.gradle/
+HosterApp/android/app/build/
+HosterApp/android/build/
