@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>Hoster — File Browser</title>
+  <meta name="description" content="Browse and download files shared over your local Wi-Fi network" />
+  <meta name="theme-color" content="#08090f" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/assets/css/client.css" />
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <div class="bg-orb orb-1"></div>
+  <div class="bg-orb orb-2"></div>
+
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+            <polyline points="9 22 9 12 15 12 15 22"/>
+          </svg>
+        </div>
+        <span class="logo-text">Hoster</span>
+      </div>
+      <div class="view-toggle">
+        <button class="view-btn active" id="gridViewBtn" title="Grid view">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        </button>
+        <button class="view-btn" id="listViewBtn" title="List view">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Search -->
+    <div class="search-bar">
+      <div class="search-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      </div>
+      <input type="text" id="searchInput" class="search-input" placeholder="Search files..." autocomplete="off" />
+      <button class="search-clear hidden" id="searchClear">&times;</button>
+    </div>
+
+    <!-- Breadcrumb -->
+    <nav class="breadcrumb" id="breadcrumb" aria-label="Directory navigation">
+      <button class="crumb crumb-home" data-path="/">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        Home
+      </button>
+    </nav>
+
+    <!-- PIN Gate -->
+    <div class="pin-gate hidden" id="pinGate">
+      <div class="pin-card">
+        <div class="pin-icon">🔐</div>
+        <h2>PIN Required</h2>
+        <p>This share is protected. Enter the PIN to continue.</p>
+        <div class="pin-inputs" id="pinInputs">
+          <input type="text" maxlength="1" class="pin-digit" inputmode="numeric" />
+          <input type="text" maxlength="1" class="pin-digit" inputmode="numeric" />
+          <input type="text" maxlength="1" class="pin-digit" inputmode="numeric" />
+          <input type="text" maxlength="1" class="pin-digit" inputmode="numeric" />
+        </div>
+        <div class="pin-error hidden" id="pinError">Incorrect PIN. Try again.</div>
+        <button class="btn btn-primary" id="pinSubmit">Unlock</button>
+      </div>
+    </div>
+
+    <!-- Upload Zone (when enabled) -->
+    <div class="upload-zone hidden" id="uploadZone">
+      <div class="upload-inner" id="dropZone">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <span>Drop files here or <label for="fileInput" class="upload-label">browse</label></span>
+        <input type="file" id="fileInput" multiple class="hidden" />
+      </div>
+      <div class="upload-progress hidden" id="uploadProgress">
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+        <span id="uploadStatus">Uploading...</span>
+      </div>
+    </div>
+
+    <!-- File Grid/List -->
+    <div class="file-container">
+      <div class="file-info-bar" id="fileInfoBar">
+        <span id="itemCount">—</span>
+        <button class="btn-text" id="downloadAllBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download All
+        </button>
+      </div>
+      <div class="file-grid" id="fileGrid"></div>
+    </div>
+
+    <!-- Loading -->
+    <div class="loader hidden" id="loader">
+      <div class="spinner"></div>
+      <span>Loading...</span>
+    </div>
+
+    <!-- Empty State -->
+    <div class="empty-state hidden" id="emptyState">
+      <div class="empty-icon">📭</div>
+      <div class="empty-title">No files found</div>
+      <div class="empty-sub">This folder is empty or your search returned no results.</div>
+    </div>
+
+    <!-- Error State -->
+    <div class="error-state hidden" id="errorState">
+      <div class="error-icon">⚠️</div>
+      <div class="error-title">Server Unavailable</div>
+      <div class="error-sub" id="errorMsg">The host may have stopped sharing. Try again shortly.</div>
+      <button class="btn btn-secondary" id="retryBtn">Retry</button>
+    </div>
+  </div>
+
+  <!-- Media Preview Modal -->
+  <div class="preview-overlay hidden" id="previewOverlay">
+    <button class="preview-close" id="previewClose">&times;</button>
+    <div class="preview-nav">
+      <button class="preview-prev" id="previewPrev">‹</button>
+      <button class="preview-next" id="previewNext">›</button>
+    </div>
+    <div class="preview-content" id="previewContent"></div>
+    <div class="preview-bar">
+      <div class="preview-filename" id="previewFilename"></div>
+      <a class="btn btn-accent-sm" id="previewDownload" download>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/><path d="M5 19h14"/></svg>
+        Download
+      </a>
+    </div>
+  </div>
+
+  <script src="/assets/js/app.js"></script>
+</body>
+</html>

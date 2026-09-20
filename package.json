@@ -1,0 +1,22 @@
+{
+  "name": "hoster",
+  "version": "1.0.0",
+  "description": "Host your mobile folders on local Wi-Fi for others to browse & download",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.17.1",
+    "qrcode": "^1.5.4",
+    "multer": "^1.4.5-lts.1",
+    "ip": "^2.0.1",
+    "mime-types": "^2.1.35",
+    "archiver": "^7.0.1"
+  },
+  "keywords": ["file-server", "local-network", "mobile", "android", "wi-fi"],
+  "author": "Hoster",
+  "license": "MIT"
+}

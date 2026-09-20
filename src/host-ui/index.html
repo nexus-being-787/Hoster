@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hoster — Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/host/host.css" />
+</head>
+<body>
+  <!-- Background Grid -->
+  <div class="bg-grid"></div>
+  <div class="bg-orb orb-1"></div>
+  <div class="bg-orb orb-2"></div>
+
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+            <polyline points="9 22 9 12 15 12 15 22"/>
+          </svg>
+        </div>
+        <span class="logo-text">Hoster</span>
+        <span class="logo-badge">LOCAL</span>
+      </div>
+      <div class="header-right">
+        <div class="ip-pill" id="ipPill">
+          <span class="ip-dot"></span>
+          <span id="ipText">Detecting...</span>
+        </div>
+        <button class="btn btn-ghost" id="settingsBtn" title="Settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <main class="main">
+      <!-- Server Control Card -->
+      <div class="card control-card">
+        <div class="card-header">
+          <div class="card-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            Server Control
+          </div>
+          <div class="server-status" id="serverStatus">
+            <span class="status-dot off" id="statusDot"></span>
+            <span id="statusText">Stopped</span>
+          </div>
+        </div>
+
+        <!-- Directory Picker -->
+        <div class="dir-section">
+          <label class="field-label">Shared Folder</label>
+          <div class="dir-input-row">
+            <input type="text" id="dirPath" class="dir-input" placeholder="/sdcard/Downloads  or  /storage/emulated/0/Music" />
+            <button class="btn btn-secondary" id="browseBtn">Browse</button>
+          </div>
+          <div id="dirPreview" class="dir-preview hidden"></div>
+        </div>
+
+        <!-- Port -->
+        <div class="field-row">
+          <div class="field-group">
+            <label class="field-label">Port</label>
+            <input type="number" id="portInput" class="field-input" value="8080" min="1024" max="65535" />
+          </div>
+          <div class="field-group">
+            <label class="field-label">Upload</label>
+            <label class="toggle-switch">
+              <input type="checkbox" id="uploadToggle" />
+              <span class="toggle-thumb"></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Main Toggle -->
+        <button class="server-btn off" id="serverToggle">
+          <span class="server-btn-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+          </span>
+          <span class="server-btn-text" id="serverBtnText">Start Server</span>
+          <span class="server-btn-shimmer"></span>
+        </button>
+      </div>
+
+      <!-- Stats Row -->
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-icon clients">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </div>
+          <div class="stat-body">
+            <div class="stat-value" id="statClients">0</div>
+            <div class="stat-label">Connected</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon transfer">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/></svg>
+          </div>
+          <div class="stat-body">
+            <div class="stat-value" id="statBytes">0 B</div>
+            <div class="stat-label">Transferred</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon uptime">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <div class="stat-body">
+            <div class="stat-value" id="statUptime">--:--</div>
+            <div class="stat-label">Uptime</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- URL & QR Section -->
+      <div class="card url-card" id="urlCard">
+        <div class="card-header">
+          <div class="card-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            Share Link
+          </div>
+        </div>
+        <div class="url-display">
+          <span class="url-text" id="shareUrl">—</span>
+          <button class="btn btn-ghost icon-only" id="copyBtn" title="Copy URL">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          </button>
+        </div>
+        <button class="btn btn-accent" id="qrBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="3" height="3"/></svg>
+          Show QR Code
+        </button>
+      </div>
+
+      <!-- Access Log -->
+      <div class="card log-card">
+        <div class="card-header">
+          <div class="card-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            Live Access Log
+          </div>
+          <button class="btn btn-ghost icon-only" id="clearLogsBtn" title="Clear">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+          </button>
+        </div>
+        <div class="log-stream" id="logStream">
+          <div class="log-empty">No requests yet. Start the server to see activity.</div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- QR Modal -->
+  <div class="modal-overlay hidden" id="qrModal">
+    <div class="modal">
+      <button class="modal-close" id="qrClose">&times;</button>
+      <h2 class="modal-title">Scan to Connect</h2>
+      <div class="qr-container">
+        <img id="qrImage" src="" alt="QR Code" />
+      </div>
+      <div class="modal-url" id="modalUrl"></div>
+      <p class="modal-hint">Open your mobile browser and scan to browse shared files</p>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div class="modal-overlay hidden" id="settingsModal">
+    <div class="modal">
+      <button class="modal-close" id="settingsClose">&times;</button>
+      <h2 class="modal-title">Settings</h2>
+      <div class="settings-group">
+        <label class="field-label">PIN Protection</label>
+        <label class="toggle-switch">
+          <input type="checkbox" id="pinToggle" />
+          <span class="toggle-thumb"></span>
+        </label>
+      </div>
+      <div id="pinGroup" class="settings-group hidden">
+        <label class="field-label">PIN Code (4 digits)</label>
+        <div class="pin-row">
+          <input type="text" id="pinInput" class="field-input mono" maxlength="8" placeholder="e.g. 4827" />
+          <button class="btn btn-secondary" id="genPinBtn">Generate</button>
+        </div>
+      </div>
+      <button class="btn btn-primary" id="saveSettingsBtn">Save Settings</button>
+    </div>
+  </div>
+
+  <script src="/host/host.js"></script>
+</body>
+</html>
