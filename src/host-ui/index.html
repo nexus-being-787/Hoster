@@ -92,6 +92,13 @@
               <span class="toggle-thumb"></span>
             </label>
           </div>
+          <div class="field-group">
+            <label class="field-label">WebDAV</label>
+            <label class="toggle-switch" title="Mount as network drive (e.g., PS2 OPL, Windows Explorer)">
+              <input type="checkbox" id="webdavToggle" />
+              <span class="toggle-thumb"></span>
+            </label>
+          </div>
         </div>
 
         <!-- Main Toggle -->
@@ -152,9 +159,21 @@
             Share Link
           </div>
         </div>
-        <div class="url-display">
-          <span class="url-text" id="shareUrl">—</span>
+        <div class="url-display" style="margin-bottom: 8px;">
+          <div style="flex:1; display:flex; flex-direction:column; overflow:hidden;">
+            <span style="font-size:0.7rem; color:var(--text-3); text-transform:uppercase; font-weight:700; margin-bottom:2px;">Web Portal</span>
+            <span class="url-text" id="shareUrl">—</span>
+          </div>
           <button class="btn btn-ghost icon-only" id="copyBtn" title="Copy URL">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          </button>
+        </div>
+        <div class="url-display hidden" id="webdavUrlContainer" style="margin-bottom: 12px;">
+          <div style="flex:1; display:flex; flex-direction:column; overflow:hidden;">
+            <span style="font-size:0.7rem; color:var(--text-3); text-transform:uppercase; font-weight:700; margin-bottom:2px;">WebDAV Drive</span>
+            <span class="url-text" id="webdavUrl">—</span>
+          </div>
+          <button class="btn btn-ghost icon-only" id="copyWebdavBtn" title="Copy WebDAV URL">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
           </button>
         </div>

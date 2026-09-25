@@ -8,10 +8,14 @@ const fs = require('fs');
 const ip = require('ip');
 const QRCode = require('qrcode');
 const Bonjour = require('bonjour-service');
+const { v2: webdav } = require('webdav-server');
 
 const bonjour = new Bonjour.Bonjour();
 let activeBonjourService = null;
 let activeShareServer = null;
+
+const wServer = new webdav.WebDAVServer({ requireAuthentification: false });
+const webdavRouter = webdav.extensions.express('/webdav', wServer);
 
 const fileRoutes = require('./routes/files');
 const uploadRoutes = require('./routes/upload');
@@ -30,6 +34,7 @@ let serverState = {
   pin: null,
   pinEnabled: false,
   uploadEnabled: false,
+  webdavEnabled: false,
   useHttps: false,
   port: 8080,
   localIP: ip.address(),
@@ -46,6 +51,44 @@ global.serverState = serverState;
 // ─────────────────────────────────────────────
 // Middleware
 // ─────────────────────────────────────────────
+// WebDAV handler must be placed before body parsers so XML/raw binary streams are not consumed
+app.use((req, res, next) => {
+  if (req.path.startsWith('/webdav')) {
+    if (!serverState.running || !serverState.webdavEnabled) {
+      return res.status(403).send('WebDAV is disabled or server not running');
+    }
+
+    // Strip the bogus www-authenticate header webdav-server v2 sends even when auth is disabled.
+    // Without this, browsers show a login dialog or report "site has a problem".
+    const origSetHeader = res.setHeader.bind(res);
+    res.setHeader = (name, value) => {
+      if (name && name.toLowerCase() === 'www-authenticate') return res;
+      return origSetHeader(name, value);
+    };
+
+    // Browsers send GET to /webdav/ — WebDAV only allows PROPFIND on collections, so browsers get
+    // a 405 which shows as "site has a problem". Redirect browser GETs to the file portal instead.
+    //
+    // IMPORTANT: Use Accept header, NOT User-Agent, for browser detection.
+    // Dolphin/KIO, Konqueror, and other DAV clients also send "Mozilla" in their UA string,
+    // but they never request "text/html" — only real browsers do.
+    if (req.method === 'GET') {
+      const accept = req.headers['accept'] || '';
+      const wantsHtml = accept.includes('text/html');
+      if (wantsHtml) {
+        // Build a relative sub-path from the WebDAV URL so we can show the right folder.
+        // e.g. /webdav/Photos → /?webdav_path=Photos
+        const subPath = req.path.replace(/^\/webdav\/?/, '').replace(/\/+$/, '');
+        const redirectTo = subPath ? `/?webdav_path=${encodeURIComponent(subPath)}` : '/';
+        return res.redirect(302, redirectTo);
+      }
+    }
+
+    return webdavRouter(req, res, next);
+  }
+  next();
+});
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -218,6 +261,7 @@ app.get('/api/status', (req, res) => {
     sharedDir: serverState.sharedDir,
     pinEnabled: serverState.pinEnabled,
     uploadEnabled: serverState.uploadEnabled,
+    webdavEnabled: serverState.webdavEnabled,
     useHttps: serverState.useHttps,
     port: serverState.port,
     localIP: serverState.localIP,
@@ -229,7 +273,7 @@ app.get('/api/status', (req, res) => {
 });
 
 app.post('/api/start', async (req, res) => {
-  let { dir, pin, pinEnabled, uploadEnabled, useHttps, port, customDomain } = req.body;
+  let { dir, pin, pinEnabled, uploadEnabled, webdavEnabled, useHttps, port, customDomain } = req.body;
   
   if (dir) {
     if (dir.startsWith('/sdcard/')) dir = dir.replace('/sdcard/', '/storage/emulated/0/');
@@ -252,9 +296,14 @@ app.post('/api/start', async (req, res) => {
   serverState.pinEnabled = !!pinEnabled;
   serverState.pin = pin || null;
   serverState.uploadEnabled = !!uploadEnabled;
+  serverState.webdavEnabled = !!webdavEnabled;
   serverState.useHttps = !!useHttps;
   serverState.port = parseInt(port) || 8080;
   serverState.localIP = ip.address();
+
+  if (serverState.webdavEnabled) {
+    wServer.setFileSystem('/', new webdav.PhysicalFileSystem(dir), () => {});
+  }
 
   if (activeShareServer) {
     try { activeShareServer.close(); } catch(e) {}
@@ -356,7 +405,7 @@ app.post('/api/start', async (req, res) => {
   serverState.running = true;
   serverState.startedAt = new Date().toISOString();
 
-  broadcast({ type: 'status', data: { running: true, useHttps: serverState.useHttps, localIP: serverState.localIP, port: serverState.port, url: domainUrl } });
+  broadcast({ type: 'status', data: { running: true, useHttps: serverState.useHttps, localIP: serverState.localIP, port: serverState.port, url: domainUrl, webdavEnabled: serverState.webdavEnabled } });
   res.json({ success: true, url: domainUrl });
 });
 
@@ -376,12 +425,18 @@ app.post('/api/stop', (req, res) => {
 });
 
 app.post('/api/settings', (req, res) => {
-  const { pin, pinEnabled, uploadEnabled, useHttps } = req.body;
+  const { pin, pinEnabled, uploadEnabled, webdavEnabled, useHttps } = req.body;
   if (typeof pinEnabled !== 'undefined') serverState.pinEnabled = !!pinEnabled;
   if (typeof uploadEnabled !== 'undefined') serverState.uploadEnabled = !!uploadEnabled;
+  if (typeof webdavEnabled !== 'undefined') {
+    serverState.webdavEnabled = !!webdavEnabled;
+    if (serverState.webdavEnabled && serverState.running && serverState.sharedDir) {
+      wServer.setFileSystem('/', new webdav.PhysicalFileSystem(serverState.sharedDir), () => {});
+    }
+  }
   if (typeof useHttps !== 'undefined') serverState.useHttps = !!useHttps;
   if (pin !== undefined) serverState.pin = pin;
-  broadcast({ type: 'settings', data: { pinEnabled: serverState.pinEnabled, uploadEnabled: serverState.uploadEnabled, useHttps: serverState.useHttps } });
+  broadcast({ type: 'settings', data: { pinEnabled: serverState.pinEnabled, uploadEnabled: serverState.uploadEnabled, webdavEnabled: serverState.webdavEnabled, useHttps: serverState.useHttps } });
   res.json({ success: true });
 });
 
@@ -416,6 +471,8 @@ app.use('/upload', (req, res, next) => {
   }
   next();
 }, uploadRoutes);
+
+
 
 // ─────────────────────────────────────────────
 // Client Portal (root)
@@ -481,5 +538,6 @@ server.listen(HOST_PORT, '0.0.0.0', () => {
   console.log(`  🚀 Host UI    → http://localhost:${HOST_PORT}/host`);
   console.log(`  🌐 Local IP   → http://${ip.address()}:${HOST_PORT}`);
   console.log(`  📁 File Port  → http://${ip.address()}:8080 (after Start)`);
+  console.log(`  📂 WebDAV     → http://${ip.address()}:8080/webdav (after Start)`);
   console.log('');
 });

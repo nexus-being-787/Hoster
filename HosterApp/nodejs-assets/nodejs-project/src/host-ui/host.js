@@ -20,11 +20,15 @@ const portInput   = $('portInput');
 const domainInput = $('domainInput');
 const httpsToggle = $('httpsToggle');
 const uploadToggle= $('uploadToggle');
+const webdavToggle= $('webdavToggle');
 const dirPreview  = $('dirPreview');
 const shareUrl    = $('shareUrl');
 const urlCard     = $('urlCard');
 const copyBtn     = $('copyBtn');
 const qrBtn       = $('qrBtn');
+const webdavUrlContainer = $('webdavUrlContainer');
+const webdavUrl   = $('webdavUrl');
+const copyWebdavBtn = $('copyWebdavBtn');
 const qrModal     = $('qrModal');
 const qrImage     = $('qrImage');
 const qrClose     = $('qrClose');
@@ -69,7 +73,7 @@ function formatTime(iso) {
   return new Date(iso).toLocaleTimeString('en', { hour12: false, hour:'2-digit', minute:'2-digit', second:'2-digit' });
 }
 
-function setServerState(running, url) {
+function setServerState(running, url, webdavEnabled) {
   serverRunning = running;
 
   statusDot.className = 'status-dot ' + (running ? 'on' : 'off');
@@ -87,6 +91,12 @@ function setServerState(running, url) {
 
   if (running && url) {
     shareUrl.textContent = url;
+    if (webdavEnabled) {
+      webdavUrlContainer.classList.remove('hidden');
+      webdavUrl.textContent = url + '/webdav';
+    } else {
+      webdavUrlContainer.classList.add('hidden');
+    }
     urlCard.classList.add('active');
   } else {
     urlCard.classList.remove('active');
@@ -125,13 +135,14 @@ async function init() {
 
     httpsToggle.checked = !!data.useHttps;
     uploadToggle.checked = !!data.uploadEnabled;
+    webdavToggle.checked = !!data.webdavEnabled;
 
     if (data.running) {
       startedAt = data.startedAt;
       bytesServed = data.bytesServed || 0;
       const protocol = data.useHttps ? 'https' : 'http';
       const url = `${protocol}://${data.localIP}:${data.port}`;
-      setServerState(true, url);
+      setServerState(true, url, data.webdavEnabled);
       dirPathInput.value = data.sharedDir || '';
       portInput.value = data.port || 8080;
       startUptimeTicker();
@@ -175,8 +186,8 @@ function connectWS() {
           if (msg.data.running) {
             startedAt = new Date().toISOString();
             startUptimeTicker();
-            const url = `http://${msg.data.localIP}:${msg.data.port}`;
-            setServerState(true, url);
+            const url = msg.data.url || `http://${msg.data.localIP}:${msg.data.port}`;
+            setServerState(true, url, msg.data.webdavEnabled !== undefined ? msg.data.webdavEnabled : webdavToggle.checked);
           } else {
             stopUptimeTicker();
             setServerState(false);
@@ -270,12 +281,13 @@ serverToggle.addEventListener('click', async () => {
           pinEnabled: pinToggle.checked,
           pin: pinInput.value,
           uploadEnabled: uploadToggle.checked,
+          webdavEnabled: webdavToggle.checked,
         })
       });
       const data = await res.json();
       if (res.ok) {
         startedAt = new Date().toISOString();
-        setServerState(true, data.url);
+        setServerState(true, data.url, webdavToggle.checked);
         startUptimeTicker();
         showPreview(dir);
       } else {
@@ -419,6 +431,17 @@ copyBtn.addEventListener('click', () => {
   });
 });
 
+copyWebdavBtn.addEventListener('click', () => {
+  const txt = webdavUrl.textContent;
+  if (!txt || txt === '—') return;
+  navigator.clipboard.writeText(txt).then(() => showToast('WebDAV URL copied!')).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = txt; document.body.appendChild(ta);
+    ta.select(); document.execCommand('copy');
+    ta.remove(); showToast('WebDAV URL copied!');
+  });
+});
+
 // ── Settings ──────────────────────────────────
 settingsBtn.addEventListener('click', () => settingsModal.classList.remove('hidden'));
 settingsClose.addEventListener('click', () => settingsModal.classList.add('hidden'));
@@ -441,6 +464,7 @@ saveSettingsBtn.addEventListener('click', async () => {
         pinEnabled: pinToggle.checked,
         pin: pinInput.value,
         uploadEnabled: uploadToggle.checked,
+        webdavEnabled: webdavToggle.checked,
       })
     });
     settingsModal.classList.add('hidden');

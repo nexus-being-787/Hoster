@@ -7,5 +7,11 @@ build/
 # JDK and Gradle build outputs
 HosterApp/jdk-17.0.10+7/
 HosterApp/android/.gradle/
+# Scratch and test files
+test-*.js
+test_cp_src/
+*.log
+logcat.txt
 HosterApp/android/app/build/
 HosterApp/android/build/
+

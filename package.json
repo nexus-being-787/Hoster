@@ -16,6 +16,7 @@
     "multer": "^1.4.5-lts.1",
     "qrcode": "^1.5.4",
     "selfsigned": "^5.5.0",
+    "webdav-server": "^2.6.3",
     "ws": "^8.17.1"
   },
   "keywords": [
