@@ -16,17 +16,22 @@ function resolveSafePath(base, reqPath) {
 
 // ─────────────────────────────────────────────
 // GET /view?path=<relative_html_path>
-// Renders an HTML file from the shared directory with:
-//   - relative asset URLs rewritten to /view-asset?path=...
-//   - relative HTML links rewritten to /view?path=...
-//   - an injected floating "Back" toolbar
+//
+// Renders an HTML file from the shared directory.
+// Uses a <base> tag so that ALL relative URLs resolve correctly:
+//   - script src, link href, img src, etc.
+//   - ES module imports (import * as THREE from './three.module.js')
+//   - fetch() calls, new Worker(), new URL(import.meta.url), etc.
+//   - CSS url() references
+// Everything is served through /view-dir/<subpath> which acts as a
+// transparent file server rooted at the shared directory.
 // ─────────────────────────────────────────────
 router.get('/', (req, res) => {
   if (!global.serverState.running || !global.serverState.sharedDir) {
     return res.status(503).send('Server not running or no directory selected.');
   }
 
-  // PIN protection — same as file routes
+  // PIN protection
   if (global.serverState.pinEnabled && global.serverState.pin) {
     const { validatePin } = require('../utils/security');
     const token = req.headers['x-hoster-pin'] || req.query.pin;
@@ -35,7 +40,8 @@ router.get('/', (req, res) => {
     }
   }
 
-  const filePath = resolveSafePath(global.serverState.sharedDir, req.query.path || '');
+  const reqPath = (req.query.path || '').replace(/^[\/\\]+/, ''); // strip leading slash
+  const filePath = resolveSafePath(global.serverState.sharedDir, reqPath);
   if (!filePath) return res.status(403).send('Access denied.');
   if (!fs.existsSync(filePath)) return res.status(404).send('File not found.');
 
@@ -54,71 +60,46 @@ router.get('/', (req, res) => {
     return res.status(500).send('Failed to read file: ' + err.message);
   }
 
-  // The directory of the HTML file (relative to shared root), used to resolve relative asset paths
-  const fileDir = path.dirname(req.query.path || '').replace(/\\/g, '/');
-  const safeFileDir = fileDir === '.' ? '' : fileDir;
+  // ── Build <base> href ──────────────────────────────────────────────────────
+  // The base href points to the directory containing the HTML file, served
+  // through /view-dir/, so ALL relative URLs (including JS module imports,
+  // fetch calls, Workers, etc.) resolve correctly without any regex rewriting.
+  //
+  // Example:
+  //   HTML file: games/threejs-game/index.html
+  //   fileDir:   games/threejs-game/
+  //   base href: /view-dir/games/threejs-game/
+  //
+  //   import * as THREE from './three.module.js'
+  //   → resolves to /view-dir/games/threejs-game/three.module.js  ✓
+  //
+  //   fetch('../assets/texture.png')
+  //   → resolves to /view-dir/games/assets/texture.png             ✓
+  const fileDir = path.dirname(reqPath).replace(/\\/g, '/');
+  const basePath = fileDir === '.' || fileDir === ''
+    ? '/view-dir/'
+    : `/view-dir/${fileDir}/`;
 
-  // ── Rewrite relative URLs inside the HTML ──────────────────────────────────
-  // We handle: src="...", href="...", url('...') in inline styles
-  // Rules:
-  //   - absolute URLs (http://, https://, //, data:, #) → leave alone
-  //   - URLs starting with / (root-relative) → rewrite to /view-asset?path=<stripped>
-  //   - relative URLs → resolve against the HTML file's directory, rewrite to /view-asset?path=<resolved>
-  //   - Exception: href on <a> tags pointing to .html/.htm → rewrite to /view?path=...
+  const baseTag = `<base href="${basePath}">`;
 
-  function resolveAssetPath(url, forLink) {
-    if (!url) return url;
-    const trimmed = url.trim();
-    // Leave absolute / data / hash URLs as-is
-    if (/^(https?:|\/\/|data:|#|mailto:|tel:)/i.test(trimmed)) return trimmed;
-
-    let relPath;
-    if (trimmed.startsWith('/')) {
-      // Root-relative → strip leading slash
-      relPath = trimmed.replace(/^\/+/, '');
-    } else {
-      // Relative → resolve against file directory
-      relPath = safeFileDir ? safeFileDir + '/' + trimmed : trimmed;
-      // Normalize: remove ./ and handle simple ../
-      relPath = relPath.split('/').reduce((acc, part) => {
-        if (part === '.' || part === '') return acc;
-        if (part === '..') { acc.pop(); return acc; }
-        acc.push(part);
-        return acc;
-      }, []).join('/');
-    }
-
-    // Detect if this is an HTML link (for <a href>)
-    const isHtml = forLink && /\.(html|htm)(\?.*)?$/i.test(relPath.split('?')[0]);
-    if (isHtml) {
-      return '/view?path=' + encodeURIComponent(relPath);
-    }
-
-    return '/view-asset?path=' + encodeURIComponent(relPath);
+  // ── Inject <base> tag ──────────────────────────────────────────────────────
+  // Must be the FIRST element inside <head> (before any other link/script).
+  if (/<head[^>]*>/i.test(html)) {
+    html = html.replace(/(<head[^>]*>)/i, `$1\n  ${baseTag}`);
+  } else if (/<html[^>]*>/i.test(html)) {
+    html = html.replace(/(<html[^>]*>)/i, `$1\n<head>${baseTag}</head>`);
+  } else {
+    html = `<head>${baseTag}</head>\n` + html;
   }
 
-  // Rewrite src="..." and href="..." attributes
-  html = html.replace(/(\s(?:src|href))\s*=\s*(['"])(.*?)\2/gi, (match, attr, quote, url) => {
-    const isHref = attr.trim().toLowerCase() === 'href';
-    const rewritten = resolveAssetPath(url, isHref);
-    return `${attr}=${quote}${rewritten}${quote}`;
-  });
-
-  // Rewrite url(...) in inline styles
-  html = html.replace(/url\(\s*(['"]?)(.*?)\1\s*\)/gi, (match, quote, url) => {
-    const rewritten = resolveAssetPath(url, false);
-    return `url(${quote}${rewritten}${quote})`;
-  });
-
-  // ── Inject back-button toolbar ─────────────────────────────────────────────
-  const backPath = '/?_t=' + Date.now(); // forces the file browser to re-render
+  // ── Inject floating "Back to Files" toolbar ────────────────────────────────
   const toolbar = `
 <style>
   #__hoster_toolbar {
     position: fixed;
     top: 0; left: 0; right: 0;
     z-index: 2147483647;
-    background: rgba(8,9,15,0.92);
+    background: rgba(8,9,15,0.88);
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
     border-bottom: 1px solid rgba(0,229,255,0.18);
@@ -127,10 +108,11 @@ router.get('/', (req, res) => {
     gap: 12px;
     padding: 10px 16px;
     box-shadow: 0 2px 20px rgba(0,0,0,0.5);
-    font-family: 'Outfit', system-ui, sans-serif;
+    font-family: system-ui, sans-serif;
     transition: transform 0.3s ease;
+    box-sizing: border-box;
   }
-  #__hoster_toolbar.hidden { transform: translateY(-100%); }
+  #__hoster_toolbar.collapsed { transform: translateY(-100%); }
   #__hoster_back_btn {
     display: inline-flex;
     align-items: center;
@@ -144,53 +126,86 @@ router.get('/', (req, res) => {
     border-radius: 10px;
     cursor: pointer;
     text-decoration: none;
-    transition: all 0.2s;
     white-space: nowrap;
     font-family: inherit;
   }
-  #__hoster_back_btn:hover {
-    background: rgba(0,229,255,0.22);
-    box-shadow: 0 0 14px rgba(0,229,255,0.3);
-    color: #fff;
-  }
-  #__hoster_back_btn svg { flex-shrink: 0; }
   #__hoster_filename {
     flex: 1;
-    color: rgba(240,240,255,0.6);
-    font-size: 0.82rem;
-    font-family: 'JetBrains Mono', monospace;
+    color: rgba(240,240,255,0.55);
+    font-size: 0.78rem;
+    font-family: monospace;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     min-width: 0;
   }
-  #__hoster_toggle_btn {
+  #__hoster_toggle {
     background: transparent;
     border: 1px solid rgba(255,255,255,0.12);
     color: rgba(255,255,255,0.4);
     width: 28px; height: 28px;
     border-radius: 6px;
     cursor: pointer;
-    font-size: 1rem;
+    font-size: 1.1rem;
+    line-height: 1;
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0;
-    transition: all 0.2s;
+    padding: 0;
   }
-  #__hoster_toggle_btn:hover { color: #fff; border-color: rgba(255,255,255,0.3); }
-  body { padding-top: 52px !important; }
+  /* Peek tab shown when toolbar is collapsed */
+  #__hoster_peek {
+    position: fixed;
+    top: 0; left: 16px;
+    z-index: 2147483647;
+    background: rgba(8,9,15,0.88);
+    border: 1px solid rgba(0,229,255,0.25);
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    padding: 4px 10px;
+    color: #00e5ff;
+    font-size: 0.75rem;
+    font-family: system-ui, sans-serif;
+    cursor: pointer;
+    display: none;
+    backdrop-filter: blur(10px);
+  }
+  body { padding-top: 52px !important; box-sizing: border-box; }
+  body.toolbar-hidden { padding-top: 0 !important; }
 </style>
+
 <div id="__hoster_toolbar">
-  <a id="__hoster_back_btn" href="${backPath}">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+  <a id="__hoster_back_btn" href="/">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
       <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
     </svg>
     Back to Files
   </a>
   <span id="__hoster_filename">${path.basename(filePath)}</span>
-  <button id="__hoster_toggle_btn" title="Hide toolbar" onclick="(function(){var t=document.getElementById('__hoster_toolbar');t.classList.toggle('hidden');this.textContent=t.classList.contains('hidden')?'▼':'▲';}).call(this)">▲</button>
-</div>`;
+  <button id="__hoster_toggle" title="Hide toolbar">▲</button>
+</div>
+<div id="__hoster_peek" onclick="__hosterShowToolbar()">▼ Hoster</div>
 
-  // Insert toolbar just after <body> tag (or prepend to html)
+<script>
+(function() {
+  var toolbar = document.getElementById('__hoster_toolbar');
+  var peek = document.getElementById('__hoster_peek');
+  var toggle = document.getElementById('__hoster_toggle');
+  var body = document.body;
+
+  toggle.onclick = function() {
+    toolbar.classList.add('collapsed');
+    peek.style.display = 'block';
+    body.classList.add('toolbar-hidden');
+  };
+
+  window.__hosterShowToolbar = function() {
+    toolbar.classList.remove('collapsed');
+    peek.style.display = 'none';
+    body.classList.remove('toolbar-hidden');
+  };
+})();
+</script>`;
+
   if (/<body[^>]*>/i.test(html)) {
     html = html.replace(/(<body[^>]*>)/i, '$1\n' + toolbar);
   } else {
@@ -198,13 +213,52 @@ router.get('/', (req, res) => {
   }
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
   res.send(html);
 });
 
 // ─────────────────────────────────────────────
-// GET /view-asset?path=<relative_path>
-// Serves any static asset from the shared directory that's referenced by a viewed HTML file.
+// GET /view-dir/*
+//
+// Transparent file server for the shared directory.
+// This is what the <base> tag points to, so all relative URLs from a
+// viewed HTML file (including JS module imports, fetch, Workers, textures,
+// audio, etc.) resolve here automatically.
+//
+// e.g. /view-dir/games/threejs-game/three.module.js
+//   → serves sharedDir/games/threejs-game/three.module.js
+// ─────────────────────────────────────────────
+router.get('/dir/*', (req, res) => {
+  if (!global.serverState.running || !global.serverState.sharedDir) {
+    return res.status(503).end();
+  }
+
+  // req.params[0] is everything after /view-dir/
+  const subPath = req.params[0] || '';
+  const filePath = resolveSafePath(global.serverState.sharedDir, subPath);
+
+  if (!filePath) return res.status(403).end();
+  if (!fs.existsSync(filePath)) return res.status(404).end();
+
+  const stat = fs.statSync(filePath);
+  if (stat.isDirectory()) return res.status(400).end();
+
+  const mimeType = mime.lookup(filePath) || 'application/octet-stream';
+
+  res.setHeader('Content-Type', mimeType);
+  res.setHeader('Content-Length', stat.size);
+  // Allow SharedArrayBuffer (needed by some Three.js features like Draco decoder)
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.setHeader('Cache-Control', 'public, max-age=60');
+
+  const stream = fs.createReadStream(filePath);
+  stream.on('data', chunk => { global.serverState.bytesServed += chunk.length; });
+  stream.pipe(res);
+});
+
+// ─────────────────────────────────────────────
+// GET /view-asset?path=<relative_path>  (kept for backward compat)
 // ─────────────────────────────────────────────
 router.get('/asset', (req, res) => {
   if (!global.serverState.running || !global.serverState.sharedDir) {
@@ -222,6 +276,7 @@ router.get('/asset', (req, res) => {
 
   res.setHeader('Content-Type', mimeType);
   res.setHeader('Content-Length', stat.size);
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   res.setHeader('Cache-Control', 'public, max-age=60');
 
   const stream = fs.createReadStream(filePath);
