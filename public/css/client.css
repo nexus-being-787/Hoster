@@ -227,6 +227,11 @@ body {
 .file-item.file .file-icon { color: var(--cyan); background: var(--cyan-dim); }
 .file-item.image .file-icon { color: var(--green); background: rgba(34,197,94,0.15); }
 .file-item.video .file-icon { color: var(--red); background: rgba(239,68,68,0.15); }
+.file-item.html .file-icon { color: #f59e0b; background: rgba(245,158,11,0.12); }
+.file-item.audio .file-icon { color: #6366f1; background: rgba(99,102,241,0.15); }
+
+/* View action button (for HTML files) */
+.action-btn-view:hover { background: rgba(245,158,11,0.15) !important; color: #f59e0b !important; border-color: rgba(245,158,11,0.4) !important; }
 
 .file-icon {
   width: 48px; height: 48px; border-radius: var(--radius-xs);

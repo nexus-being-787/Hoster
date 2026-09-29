@@ -19,6 +19,7 @@ const webdavRouter = webdav.extensions.express('/webdav', wServer);
 
 const fileRoutes = require('./routes/files');
 const uploadRoutes = require('./routes/upload');
+const viewRoutes = require('./routes/view');
 const { validatePin } = require('./utils/security');
 
 const app = express();
@@ -471,6 +472,30 @@ app.use('/upload', (req, res, next) => {
   }
   next();
 }, uploadRoutes);
+
+// ─────────────────────────────────────────────
+// HTML Viewer Routes
+// ─────────────────────────────────────────────
+// GET /view?path=<relative_html_path>   → renders the HTML file with injected back-button toolbar
+// GET /view-asset?path=<relative_path>  → serves any asset referenced by the HTML (images, CSS, JS)
+app.use('/view', (req, res, next) => {
+  if (!serverState.running || !serverState.sharedDir) {
+    return res.status(503).send('Server not running or no directory selected.');
+  }
+  next();
+}, viewRoutes);
+
+app.use('/view-asset', (req, res, next) => {
+  if (!serverState.running || !serverState.sharedDir) {
+    return res.status(503).end();
+  }
+  next();
+}, (req, res) => {
+  // Reuse viewRoutes asset handler — forward to /asset internally
+  req.url = '/asset' + (req.url === '/' ? '' : req.url);
+  viewRoutes(req, res, () => res.status(404).end());
+});
+
 
 
 
