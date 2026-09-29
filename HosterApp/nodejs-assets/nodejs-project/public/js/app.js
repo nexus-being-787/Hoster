@@ -257,8 +257,12 @@ function renderFiles() {
         ${file.type === 'dir' ? 
           `<button class="action-btn" title="Download ZIP" data-action="zip">
              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-           </button>` : 
-          `<button class="action-btn" title="Download" data-action="download">
+           </button>` 
+          : isHtmlFile(file) ?
+          `<button class="action-btn action-btn-view" title="Open in Viewer" data-action="view">
+             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+           </button>`
+          : `<button class="action-btn" title="Download" data-action="download">
              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
            </button>`
         }
@@ -273,12 +277,20 @@ function renderFiles() {
         const action = actionBtn.dataset.action;
         if (action === 'download') triggerDownload(file.path, false);
         if (action === 'zip') triggerDownload(file.path, true);
+        if (action === 'view') {
+          const normPath = file.path.startsWith('/') ? file.path.slice(1) : file.path;
+          window.location.href = '/view?path=' + encodeURIComponent(normPath) + (state.pin ? '&pin=' + state.pin : '');
+        }
         return;
       }
       
       // Default item click
       if (file.type === 'dir') {
         loadFiles(file.path);
+      } else if (isHtmlFile(file)) {
+        // Open HTML file in the interactive viewer
+        const normPath = file.path.startsWith('/') ? file.path.slice(1) : file.path;
+        window.location.href = '/view?path=' + encodeURIComponent(normPath) + (state.pin ? '&pin=' + state.pin : '');
       } else {
         if (isPreviewable(file.mimeType)) {
           openPreview(file);
@@ -627,11 +639,18 @@ function isPreviewable(mime) {
   return mime.startsWith('image/') || mime.startsWith('video/') || mime.startsWith('audio/');
 }
 
+function isHtmlFile(file) {
+  if (!file) return false;
+  const name = (file.name || '').toLowerCase();
+  return name.endsWith('.html') || name.endsWith('.htm');
+}
+
 function getFileCategory(mime) {
   if (!mime) return 'file';
   if (mime.startsWith('image/')) return 'image';
   if (mime.startsWith('video/')) return 'video';
   if (mime.startsWith('audio/')) return 'audio';
+  if (mime === 'text/html') return 'html';
   return 'file';
 }
 
@@ -648,6 +667,10 @@ function escapeHtml(str) {
 function getFileIcon(file) {
   if (file.type === 'dir') {
     return `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>`;
+  }
+  // HTML / HTM files — use a code/browser icon
+  if (isHtmlFile(file)) {
+    return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`;
   }
   if (file.mimeType && file.mimeType.startsWith('image/')) {
     // Attempt thumbnail if small enough, else just icon

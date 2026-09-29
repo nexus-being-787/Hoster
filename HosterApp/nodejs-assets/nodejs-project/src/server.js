@@ -19,6 +19,7 @@ const webdavRouter = webdav.extensions.express('/webdav', wServer);
 
 const fileRoutes = require('./routes/files');
 const uploadRoutes = require('./routes/upload');
+const viewRoutes = require('./routes/view');
 const { validatePin } = require('./utils/security');
 
 const app = express();
@@ -471,6 +472,43 @@ app.use('/upload', (req, res, next) => {
   }
   next();
 }, uploadRoutes);
+
+// ─────────────────────────────────────────────
+// HTML Viewer Routes
+// ─────────────────────────────────────────────
+// GET /view?path=<file>      → renders the HTML file with <base> tag + toolbar
+// GET /view-dir/*            → transparent file server (serves assets from sharedDir)
+//                              used by the <base> tag so ALL relative URLs work:
+//                              ES module imports, fetch(), Workers, textures, audio, etc.
+// GET /view-asset?path=<p>  → legacy asset proxy (kept for backward compat)
+app.use('/view', (req, res, next) => {
+  if (!serverState.running || !serverState.sharedDir) {
+    return res.status(503).send('Server not running or no directory selected.');
+  }
+  next();
+}, viewRoutes);
+
+// /view-dir/* — the <base href> target; serves any file from sharedDir by path segments
+app.use('/view-dir', (req, res, next) => {
+  if (!serverState.running || !serverState.sharedDir) {
+    return res.status(503).end();
+  }
+  // Forward to /dir/* handler in viewRoutes
+  req.url = '/dir' + req.url;
+  viewRoutes(req, res, () => res.status(404).end());
+});
+
+// /view-asset?path= — legacy, keep working
+app.use('/view-asset', (req, res, next) => {
+  if (!serverState.running || !serverState.sharedDir) {
+    return res.status(503).end();
+  }
+  next();
+}, (req, res) => {
+  req.url = '/asset' + (req.url === '/' ? '' : req.url);
+  viewRoutes(req, res, () => res.status(404).end());
+});
+
 
 
 
