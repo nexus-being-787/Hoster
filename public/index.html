@@ -86,13 +86,41 @@
 
     <!-- File Grid/List -->
     <div class="file-container">
-      <div class="file-info-bar" id="fileInfoBar">
-        <span id="itemCount">—</span>
-        <button class="btn-text" id="downloadAllBtn">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Download All
-        </button>
+      <div class="file-controls-bar" id="fileControlsBar">
+        <!-- Sort controls -->
+        <div class="sort-controls">
+          <button class="sort-btn active" id="sortName" data-field="name" title="Sort by name">
+            Name <span class="sort-arrow" id="sortNameArrow">↑</span>
+          </button>
+          <button class="sort-btn" id="sortSize" data-field="size" title="Sort by size">
+            Size <span class="sort-arrow hidden" id="sortSizeArrow">↑</span>
+          </button>
+          <button class="sort-btn" id="sortDate" data-field="date" title="Sort by date">
+            Date <span class="sort-arrow hidden" id="sortDateArrow">↑</span>
+          </button>
+        </div>
+        <!-- Info + Download All -->
+        <div class="file-info-right">
+          <span id="itemCount" class="item-count">—</span>
+          <button class="btn-text" id="downloadAllBtn" title="Download all as ZIP">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            ZIP
+          </button>
+        </div>
       </div>
+
+      <!-- Type filter chips -->
+      <div class="type-chips" id="typeChips">
+        <button class="chip active" data-type="all">All</button>
+        <button class="chip" data-type="dir">📁 Folders</button>
+        <button class="chip" data-type="image">🖼️ Images</button>
+        <button class="chip" data-type="video">🎬 Videos</button>
+        <button class="chip" data-type="audio">🎵 Audio</button>
+        <button class="chip" data-type="pdf">📄 PDF</button>
+        <button class="chip" data-type="html">🌐 HTML</button>
+        <button class="chip" data-type="file">📎 Other</button>
+      </div>
+
       <div class="file-grid" id="fileGrid"></div>
     </div>
 

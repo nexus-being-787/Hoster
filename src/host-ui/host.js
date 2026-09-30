@@ -73,7 +73,7 @@ function formatTime(iso) {
   return new Date(iso).toLocaleTimeString('en', { hour12: false, hour:'2-digit', minute:'2-digit', second:'2-digit' });
 }
 
-function setServerState(running, url, webdavEnabled) {
+function setServerState(running, url, webdavEnabled, localHostname, localUrl) {
   serverRunning = running;
 
   statusDot.className = 'status-dot ' + (running ? 'on' : 'off');
@@ -90,16 +90,32 @@ function setServerState(running, url, webdavEnabled) {
   }
 
   if (running && url) {
-    shareUrl.textContent = url;
+    // Show .local hostname as primary (stable), IP as secondary
+    const displayUrl = localHostname ? `${url.split('://')[0]}://${localHostname}:${new URL(url).port || ''}`.replace(/:$/, '') : url;
+    shareUrl.textContent = displayUrl;
+    shareUrl.title = localUrl ? `IP fallback: ${localUrl}` : url;
+
+    // Show IP as a secondary hint below the main URL
+    let ipHint = document.getElementById('__ipHint');
+    if (!ipHint) {
+      ipHint = document.createElement('div');
+      ipHint.id = '__ipHint';
+      ipHint.style.cssText = 'font-size:0.72rem;color:rgba(240,240,255,0.4);margin-top:4px;font-family:monospace;';
+      shareUrl.parentNode.insertBefore(ipHint, shareUrl.nextSibling);
+    }
+    ipHint.textContent = localUrl ? `IP: ${localUrl}` : '';
+
     if (webdavEnabled) {
       webdavUrlContainer.classList.remove('hidden');
-      webdavUrl.textContent = url + '/webdav';
+      webdavUrl.textContent = displayUrl + '/webdav';
     } else {
       webdavUrlContainer.classList.add('hidden');
     }
     urlCard.classList.add('active');
   } else {
     urlCard.classList.remove('active');
+    const ipHint = document.getElementById('__ipHint');
+    if (ipHint) ipHint.textContent = '';
   }
 }
 
@@ -141,8 +157,11 @@ async function init() {
       startedAt = data.startedAt;
       bytesServed = data.bytesServed || 0;
       const protocol = data.useHttps ? 'https' : 'http';
-      const url = `${protocol}://${data.localIP}:${data.port}`;
-      setServerState(true, url, data.webdavEnabled);
+      const localUrl = `${protocol}://${data.localIP}:${data.port}`;
+      const url = data.localHostname
+        ? `${protocol}://${data.localHostname}:${data.port}`
+        : localUrl;
+      setServerState(true, url, data.webdavEnabled, data.localHostname, localUrl);
       dirPathInput.value = data.sharedDir || '';
       portInput.value = data.port || 8080;
       startUptimeTicker();
@@ -187,7 +206,8 @@ function connectWS() {
             startedAt = new Date().toISOString();
             startUptimeTicker();
             const url = msg.data.url || `http://${msg.data.localIP}:${msg.data.port}`;
-            setServerState(true, url, msg.data.webdavEnabled !== undefined ? msg.data.webdavEnabled : webdavToggle.checked);
+            const localUrl = msg.data.localUrl || `http://${msg.data.localIP}:${msg.data.port}`;
+            setServerState(true, url, msg.data.webdavEnabled !== undefined ? msg.data.webdavEnabled : webdavToggle.checked, msg.data.localHostname, localUrl);
           } else {
             stopUptimeTicker();
             setServerState(false);
