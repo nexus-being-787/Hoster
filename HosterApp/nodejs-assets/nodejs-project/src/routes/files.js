@@ -94,12 +94,12 @@ router.get('/download', (req, res) => {
   const fileName = path.basename(filePath);
   const fileSize = stat.size;
 
-  const safeFileName = fileName.replace(/"/g, '');
+  const safeFileName = fileName.replace(/\"/g, '');
   const disposition = `attachment; filename="${safeFileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
 
-  // HTTP Range support for media streaming
+  // HTTP Range support for ALL file types (enables resume on disconnect for any download)
   const range = req.headers.range;
-  if (range && (mimeType.startsWith('video/') || mimeType.startsWith('audio/'))) {
+  if (range) {
     const parts = range.replace(/bytes=/, '').split('-');
     const start = parseInt(parts[0], 10);
     const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
@@ -110,6 +110,7 @@ router.get('/download', (req, res) => {
       'Accept-Ranges': 'bytes',
       'Content-Length': chunkSize,
       'Content-Type': mimeType,
+      'Content-Disposition': disposition,
     });
 
     const stream = fs.createReadStream(filePath, { start, end });

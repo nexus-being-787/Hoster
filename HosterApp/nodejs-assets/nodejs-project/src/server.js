@@ -7,11 +7,10 @@ const path = require('path');
 const fs = require('fs');
 const ip = require('ip');
 const QRCode = require('qrcode');
-const Bonjour = require('bonjour-service');
+const mdns = require('multicast-dns');
 const { v2: webdav } = require('webdav-server');
 
-const bonjour = new Bonjour.Bonjour();
-let activeBonjourService = null;
+let activeMdns = null;
 let activeShareServer = null;
 
 const wServer = new webdav.WebDAVServer({ requireAuthentification: false });
@@ -20,11 +19,47 @@ const webdavRouter = webdav.extensions.express('/webdav', wServer);
 const fileRoutes = require('./routes/files');
 const uploadRoutes = require('./routes/upload');
 const viewRoutes = require('./routes/view');
+const pdfRoutes = require('./routes/pdf');
 const { validatePin } = require('./utils/security');
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
+
+// ─────────────────────────────────────────────
+// mDNS helpers — advertise <hostname>.local on the LAN
+// Uses multicast-dns (pure JS, no native bindings, works on Android)
+// ─────────────────────────────────────────────
+function startMdns(hostname, currentIP) {
+  stopMdns();
+  try {
+    activeMdns = mdns();
+    activeMdns.on('query', (query) => {
+      const match = query.questions.find(q =>
+        q.name === hostname && (q.type === 'A' || q.type === 'ANY')
+      );
+      if (match) {
+        activeMdns.respond({
+          answers: [{ name: hostname, type: 'A', ttl: 300, data: currentIP, flush: true }]
+        });
+      }
+    });
+    // Proactive announcement
+    activeMdns.respond({
+      answers: [{ name: hostname, type: 'A', ttl: 300, data: currentIP, flush: true }]
+    });
+    console.log(`mDNS: ${hostname} → ${currentIP}`);
+  } catch (e) {
+    console.warn('mDNS start failed:', e.message);
+  }
+}
+
+function stopMdns() {
+  if (activeMdns) {
+    try { activeMdns.destroy(); } catch(e) {}
+    activeMdns = null;
+  }
+}
 
 // ─────────────────────────────────────────────
 // State
@@ -39,6 +74,7 @@ let serverState = {
   useHttps: false,
   port: 8080,
   localIP: ip.address(),
+  localHostname: 'hoster.local',  // stable .local hostname
   clients: new Set(),
   accessLogs: [],
   bytesServed: 0,
@@ -302,6 +338,14 @@ app.post('/api/start', async (req, res) => {
   serverState.port = parseInt(port) || 8080;
   serverState.localIP = ip.address();
 
+  // Determine .local hostname — custom domain or default 'hoster'
+  const cleanDomain = customDomain
+    ? customDomain.replace(/[^a-zA-Z0-9-]/g, '').toLowerCase()
+    : '';
+  const hostnameBase = cleanDomain || 'hoster';
+  const localHostname = `${hostnameBase}.local`;
+  serverState.localHostname = localHostname;
+
   if (serverState.webdavEnabled) {
     wServer.setFileSystem('/', new webdav.PhysicalFileSystem(dir), () => {});
   }
@@ -312,62 +356,71 @@ app.post('/api/start', async (req, res) => {
   }
 
   const protocol = serverState.useHttps ? 'https' : 'http';
-  let domainUrl = `${protocol}://${serverState.localIP}:${serverState.port}`;
+  const localUrl = `${protocol}://${serverState.localIP}:${serverState.port}`;
+  const hostnameUrl = `${protocol}://${localHostname}:${serverState.port}`;
+  // Default: always show IP. Only show .local as primary if user explicitly set a custom domain.
+  let domainUrl = cleanDomain ? hostnameUrl : localUrl;
 
-  if (activeBonjourService) {
-    activeBonjourService.stop();
-    activeBonjourService = null;
-  }
-  
-  if (customDomain) {
-    const cleanDomain = customDomain.replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
-    if (cleanDomain) {
-      activeBonjourService = bonjour.publish({ name: cleanDomain, type: protocol, port: serverState.port, host: `${cleanDomain}.local` });
-      domainUrl = `${protocol}://${cleanDomain}.local:${serverState.port}`;
-    }
+  // Start mDNS — advertise <hostnameBase>.local → current IP
+  // Also advertise hoster.local as an alias if using a custom name
+  startMdns(localHostname, serverState.localIP);
+  if (hostnameBase !== 'hoster') {
+    // Also advertise the default hoster.local so clients always have a fallback
+    setTimeout(() => {
+      try {
+        const fallbackMdns = mdns();
+        fallbackMdns.on('query', (q) => {
+          if (q.questions.some(r => r.name === 'hoster.local' && (r.type === 'A' || r.type === 'ANY'))) {
+            fallbackMdns.respond({ answers: [{ name: 'hoster.local', type: 'A', ttl: 300, data: serverState.localIP, flush: true }] });
+          }
+        });
+        fallbackMdns.respond({ answers: [{ name: 'hoster.local', type: 'A', ttl: 300, data: serverState.localIP, flush: true }] });
+      } catch(e) {}
+    }, 200);
   }
 
   try {
     if (serverState.useHttps) {
-      // Check cache for existing cert
+      // Check cache for existing cert (keyed to hostname, not IP — stable across reconnects)
       const os = require('os');
-      const certCachePath = path.join(os.tmpdir(), 'hoster_cert.json');
+      const certCachePath = path.join(os.tmpdir(), `hoster_cert_${hostnameBase}.json`);
       let pki = null;
-      
+
       try {
         if (fs.existsSync(certCachePath)) {
           const cached = JSON.parse(fs.readFileSync(certCachePath, 'utf8'));
-          if (cached.ip === serverState.localIP) {
+          if (cached.hostname === localHostname) {
             pki = cached.pki;
           }
         }
       } catch (err) {}
 
       if (!pki) {
-        // Generate cert with 2048-bit key (required by modern browsers) and IP SAN
-        // We use a static keypair to ensure certificate generation takes <10ms and NEVER blocks the event loop on mobile
+        // Generate cert for the .local hostname (not IP) so it's stable across IP changes.
+        // Browsers still show a warning the first time (self-signed), but the cert persists.
         const keyPair = require('./staticKey.json');
+        const altNames = [
+          { type: 2, value: localHostname },          // hoster.local (DNS SAN)
+          { type: 2, value: 'hoster.local' },         // fallback alias
+          { type: 7, ip: serverState.localIP },       // current IP
+          { type: 7, ip: '127.0.0.1' },
+          { type: 2, value: 'localhost' },
+        ];
+        if (cleanDomain && cleanDomain !== 'hoster') {
+          altNames.push({ type: 2, value: `${cleanDomain}.local` });
+        }
 
         pki = await selfsigned.generate(
-          [{ name: 'commonName', value: serverState.localIP }],
+          [{ name: 'commonName', value: localHostname }],
           {
             keyPair,
-            days: 365,
-            extensions: [
-              {
-                name: 'subjectAltName',
-                altNames: [
-                  { type: 7, ip: serverState.localIP },
-                  { type: 7, ip: '127.0.0.1' },
-                  { type: 2, value: 'localhost' },
-                ],
-              },
-            ],
+            days: 3650, // 10 years — cert stays valid even when IP changes
+            extensions: [{ name: 'subjectAltName', altNames }],
           }
         );
-        // Save to cache
+        // Cache keyed to hostname — only regenerate if hostname changes
         try {
-          fs.writeFileSync(certCachePath, JSON.stringify({ ip: serverState.localIP, pki }), 'utf8');
+          fs.writeFileSync(certCachePath, JSON.stringify({ hostname: localHostname, pki }), 'utf8');
         } catch (err) {}
       }
 
@@ -384,7 +437,7 @@ app.post('/api/start', async (req, res) => {
           broadcast({ type: 'clients', data: { count: serverState.clients.size } });
         });
         ws.on('error', () => serverState.clients.delete(ws));
-        ws.send(JSON.stringify({ type: 'init', data: { running: true, localIP: serverState.localIP, port: serverState.port } }));
+        ws.send(JSON.stringify({ type: 'init', data: { running: true, localIP: serverState.localIP, localHostname, port: serverState.port } }));
       });
 
       await new Promise((resolve, reject) => {
@@ -406,17 +459,23 @@ app.post('/api/start', async (req, res) => {
   serverState.running = true;
   serverState.startedAt = new Date().toISOString();
 
-  broadcast({ type: 'status', data: { running: true, useHttps: serverState.useHttps, localIP: serverState.localIP, port: serverState.port, url: domainUrl, webdavEnabled: serverState.webdavEnabled } });
-  res.json({ success: true, url: domainUrl });
+  broadcast({ type: 'status', data: {
+    running: true,
+    useHttps: serverState.useHttps,
+    localIP: serverState.localIP,
+    localHostname,
+    localUrl,
+    port: serverState.port,
+    url: domainUrl,
+    webdavEnabled: serverState.webdavEnabled
+  }});
+  res.json({ success: true, url: domainUrl, localHostname, localUrl });
 });
 
 app.post('/api/stop', (req, res) => {
   serverState.running = false;
   serverState.startedAt = null;
-  if (activeBonjourService) {
-    activeBonjourService.stop();
-    activeBonjourService = null;
-  }
+  stopMdns();
   if (activeShareServer) {
     try { activeShareServer.close(); } catch(e) {}
     activeShareServer = null;
@@ -509,8 +568,16 @@ app.use('/view-asset', (req, res, next) => {
   viewRoutes(req, res, () => res.status(404).end());
 });
 
-
-
+// ─────────────────────────────────────────────
+// PDF Viewer Route
+// GET /pdf?path=<relative_pdf_path>
+// ─────────────────────────────────────────────
+app.use('/pdf', (req, res, next) => {
+  if (!serverState.running || !serverState.sharedDir) {
+    return res.status(503).send('Server not running or no directory selected.');
+  }
+  next();
+}, pdfRoutes);
 
 // ─────────────────────────────────────────────
 // Client Portal (root)

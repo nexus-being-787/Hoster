@@ -6,6 +6,9 @@ const state = {
   pin: null,
   viewMode: localStorage.getItem('hoster_view') || 'grid',
   searchQuery: '',
+  sortField: localStorage.getItem('hoster_sort_field') || 'name',
+  sortDir: localStorage.getItem('hoster_sort_dir') || 'asc',
+  activeTypeFilter: 'all',
   previewIndex: -1,
   previewFiles: []
 };
@@ -86,6 +89,39 @@ function setupEventListeners() {
     els.errorState.classList.add('hidden');
     loadFiles(state.currentPath);
   });
+
+  // ── Sort controls ────────────────────────────
+  const sortBtns = document.querySelectorAll('.sort-btn');
+  sortBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const field = btn.dataset.field;
+      if (state.sortField === field) {
+        // Toggle direction
+        state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        state.sortField = field;
+        state.sortDir = 'asc';
+      }
+      localStorage.setItem('hoster_sort_field', state.sortField);
+      localStorage.setItem('hoster_sort_dir', state.sortDir);
+      updateSortUI();
+      renderFiles();
+    });
+  });
+
+  // ── Type filter chips ────────────────────────
+  const chips = document.querySelectorAll('.chip');
+  chips.forEach(chip => {
+    chip.addEventListener('click', () => {
+      state.activeTypeFilter = chip.dataset.type;
+      chips.forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      renderFiles();
+    });
+  });
+
+  // Initialize sort UI
+  updateSortUI();
 
   // PIN Input
   els.pinInputs.forEach((input, idx) => {
@@ -215,13 +251,58 @@ async function loadFiles(path) {
 // Rendering
 // ─────────────────────────────────────────────
 
+function updateSortUI() {
+  const fields = ['name', 'size', 'date'];
+  fields.forEach(f => {
+    const btn = document.getElementById('sort' + f.charAt(0).toUpperCase() + f.slice(1));
+    const arrow = document.getElementById('sort' + f.charAt(0).toUpperCase() + f.slice(1) + 'Arrow');
+    if (!btn || !arrow) return;
+    const isActive = state.sortField === f;
+    btn.classList.toggle('active', isActive);
+    arrow.classList.toggle('hidden', !isActive);
+    arrow.textContent = state.sortDir === 'asc' ? '↑' : '↓';
+  });
+}
+
+function sortFiles(files) {
+  return [...files].sort((a, b) => {
+    // Always put directories first unless sorting by type
+    if (state.sortField !== 'type') {
+      if (a.type !== b.type) return a.type === 'dir' ? -1 : 1;
+    }
+    let va, vb;
+    switch (state.sortField) {
+      case 'size': va = a.size || 0; vb = b.size || 0; break;
+      case 'date': va = a.mtime ? new Date(a.mtime).getTime() : 0;
+                   vb = b.mtime ? new Date(b.mtime).getTime() : 0; break;
+      default:     va = a.name.toLowerCase(); vb = b.name.toLowerCase(); break;
+    }
+    const cmp = va < vb ? -1 : va > vb ? 1 : 0;
+    return state.sortDir === 'asc' ? cmp : -cmp;
+  });
+}
+
 function renderFiles() {
   els.fileGrid.innerHTML = '';
   
   let filtered = state.files;
-  if (state.searchQuery) {
-    filtered = state.files.filter(f => f.name.toLowerCase().includes(state.searchQuery));
+
+  // Apply type filter chip
+  if (state.activeTypeFilter && state.activeTypeFilter !== 'all') {
+    filtered = filtered.filter(f => {
+      const cat = getFileCategory(f.mimeType, f);
+      if (state.activeTypeFilter === 'dir') return f.type === 'dir';
+      return cat === state.activeTypeFilter;
+    });
   }
+
+  // Apply search query
+  if (state.searchQuery) {
+    filtered = filtered.filter(f => f.name.toLowerCase().includes(state.searchQuery));
+  }
+
+  // Apply sort
+  filtered = sortFiles(filtered);
   
   els.itemCount.textContent = `${filtered.length} item${filtered.length !== 1 ? 's' : ''}`;
   
@@ -237,7 +318,7 @@ function renderFiles() {
   
   filtered.forEach(file => {
     const item = document.createElement('div');
-    item.className = `file-item ${file.type} ${getFileCategory(file.mimeType)}`;
+    item.className = `file-item ${file.type} ${getFileCategory(file.mimeType, file)}`;
     
     const icon = getFileIcon(file);
     const sizeStr = file.type === 'dir' ? '' : formatBytes(file.size);
@@ -258,7 +339,7 @@ function renderFiles() {
           `<button class="action-btn" title="Download ZIP" data-action="zip">
              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
            </button>` 
-          : isHtmlFile(file) ?
+          : (isHtmlFile(file) || isPdfFile(file)) ?
           `<button class="action-btn action-btn-view" title="Open in Viewer" data-action="view">
              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
            </button>`
@@ -279,7 +360,11 @@ function renderFiles() {
         if (action === 'zip') triggerDownload(file.path, true);
         if (action === 'view') {
           const normPath = file.path.startsWith('/') ? file.path.slice(1) : file.path;
-          window.location.href = '/view?path=' + encodeURIComponent(normPath) + (state.pin ? '&pin=' + state.pin : '');
+          if (isPdfFile(file)) {
+            window.location.href = '/pdf?path=' + encodeURIComponent(normPath) + (state.pin ? '&pin=' + state.pin : '');
+          } else {
+            window.location.href = '/view?path=' + encodeURIComponent(normPath) + (state.pin ? '&pin=' + state.pin : '');
+          }
         }
         return;
       }
@@ -287,8 +372,10 @@ function renderFiles() {
       // Default item click
       if (file.type === 'dir') {
         loadFiles(file.path);
+      } else if (isPdfFile(file)) {
+        const normPath = file.path.startsWith('/') ? file.path.slice(1) : file.path;
+        window.location.href = '/pdf?path=' + encodeURIComponent(normPath) + (state.pin ? '&pin=' + state.pin : '');
       } else if (isHtmlFile(file)) {
-        // Open HTML file in the interactive viewer
         const normPath = file.path.startsWith('/') ? file.path.slice(1) : file.path;
         window.location.href = '/view?path=' + encodeURIComponent(normPath) + (state.pin ? '&pin=' + state.pin : '');
       } else {
@@ -645,12 +732,22 @@ function isHtmlFile(file) {
   return name.endsWith('.html') || name.endsWith('.htm');
 }
 
-function getFileCategory(mime) {
+function isPdfFile(file) {
+  if (!file) return false;
+  const name = (file.name || '').toLowerCase();
+  return name.endsWith('.pdf') || file.mimeType === 'application/pdf';
+}
+
+// getFileCategory now also accepts the full file object for extension-based detection
+function getFileCategory(mime, file) {
+  if (file && isHtmlFile(file)) return 'html';
+  if (file && isPdfFile(file)) return 'pdf';
   if (!mime) return 'file';
   if (mime.startsWith('image/')) return 'image';
   if (mime.startsWith('video/')) return 'video';
   if (mime.startsWith('audio/')) return 'audio';
   if (mime === 'text/html') return 'html';
+  if (mime === 'application/pdf') return 'pdf';
   return 'file';
 }
 
@@ -667,6 +764,10 @@ function escapeHtml(str) {
 function getFileIcon(file) {
   if (file.type === 'dir') {
     return `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>`;
+  }
+  // PDF files — red document icon
+  if (isPdfFile(file)) {
+    return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/><line x1="9" y1="9" x2="11" y2="9"/></svg>`;
   }
   // HTML / HTM files — use a code/browser icon
   if (isHtmlFile(file)) {

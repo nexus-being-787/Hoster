@@ -73,7 +73,7 @@ function formatTime(iso) {
   return new Date(iso).toLocaleTimeString('en', { hour12: false, hour:'2-digit', minute:'2-digit', second:'2-digit' });
 }
 
-function setServerState(running, url, webdavEnabled) {
+function setServerState(running, url, webdavEnabled, localHostname, localUrl) {
   serverRunning = running;
 
   statusDot.className = 'status-dot ' + (running ? 'on' : 'off');
@@ -90,7 +90,24 @@ function setServerState(running, url, webdavEnabled) {
   }
 
   if (running && url) {
+    // Primary display: always the IP-based URL (or custom .local if set by user)
     shareUrl.textContent = url;
+    shareUrl.title = url;
+
+    // Show .local as a secondary tip only when a custom domain is set
+    let ipHint = document.getElementById('__ipHint');
+    if (!ipHint) {
+      ipHint = document.createElement('div');
+      ipHint.id = '__ipHint';
+      ipHint.style.cssText = 'font-size:0.72rem;color:rgba(240,240,255,0.4);margin-top:4px;font-family:monospace;';
+      shareUrl.parentNode.insertBefore(ipHint, shareUrl.nextSibling);
+    }
+    // Only show .local hint if it differs from the main displayed URL (i.e. user set a custom domain)
+    const hostnameUrl = localHostname && localUrl && url !== localUrl
+      ? `Also: http://${localHostname}:${new URL(url).port}`
+      : '';
+    ipHint.textContent = hostnameUrl;
+
     if (webdavEnabled) {
       webdavUrlContainer.classList.remove('hidden');
       webdavUrl.textContent = url + '/webdav';
@@ -100,6 +117,8 @@ function setServerState(running, url, webdavEnabled) {
     urlCard.classList.add('active');
   } else {
     urlCard.classList.remove('active');
+    const ipHint = document.getElementById('__ipHint');
+    if (ipHint) ipHint.textContent = '';
   }
 }
 
@@ -141,8 +160,10 @@ async function init() {
       startedAt = data.startedAt;
       bytesServed = data.bytesServed || 0;
       const protocol = data.useHttps ? 'https' : 'http';
-      const url = `${protocol}://${data.localIP}:${data.port}`;
-      setServerState(true, url, data.webdavEnabled);
+      const localUrl = `${protocol}://${data.localIP}:${data.port}`;
+      // Show IP as primary; .local only when custom domain was set (url !== localUrl)
+      const url = data.url || localUrl;
+      setServerState(true, url, data.webdavEnabled, data.localHostname, localUrl);
       dirPathInput.value = data.sharedDir || '';
       portInput.value = data.port || 8080;
       startUptimeTicker();
@@ -187,7 +208,8 @@ function connectWS() {
             startedAt = new Date().toISOString();
             startUptimeTicker();
             const url = msg.data.url || `http://${msg.data.localIP}:${msg.data.port}`;
-            setServerState(true, url, msg.data.webdavEnabled !== undefined ? msg.data.webdavEnabled : webdavToggle.checked);
+            const localUrl = msg.data.localUrl || `http://${msg.data.localIP}:${msg.data.port}`;
+            setServerState(true, url, msg.data.webdavEnabled !== undefined ? msg.data.webdavEnabled : webdavToggle.checked, msg.data.localHostname, localUrl);
           } else {
             stopUptimeTicker();
             setServerState(false);

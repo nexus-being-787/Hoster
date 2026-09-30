@@ -229,9 +229,45 @@ body {
 .file-item.video .file-icon { color: var(--red); background: rgba(239,68,68,0.15); }
 .file-item.html .file-icon { color: #f59e0b; background: rgba(245,158,11,0.12); }
 .file-item.audio .file-icon { color: #6366f1; background: rgba(99,102,241,0.15); }
+.file-item.pdf .file-icon  { color: #ef4444; background: rgba(239,68,68,0.12); }
 
-/* View action button (for HTML files) */
+/* View action button (for HTML / PDF files) */
 .action-btn-view:hover { background: rgba(245,158,11,0.15) !important; color: #f59e0b !important; border-color: rgba(245,158,11,0.4) !important; }
+
+/* ── Sort controls bar ── */
+.file-controls-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; margin-bottom: 8px; flex-wrap: wrap;
+}
+.sort-controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.sort-btn {
+  background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+  color: rgba(240,240,255,0.45); border-radius: 8px;
+  padding: 5px 12px; font-size: 0.78rem; cursor: pointer; font-family: inherit;
+  transition: all 0.15s; display: flex; align-items: center; gap: 4px;
+}
+.sort-btn:hover { background: rgba(255,255,255,0.08); color: rgba(240,240,255,0.75); }
+.sort-btn.active { background: rgba(79,70,229,0.15); border-color: rgba(79,70,229,0.4); color: #a5b4fc; }
+.sort-arrow { font-size: 0.7rem; }
+
+.file-info-right { display: flex; align-items: center; gap: 12px; }
+.item-count { font-size: 0.8rem; color: rgba(240,240,255,0.35); }
+
+/* ── Type filter chips ── */
+.type-chips {
+  display: flex; gap: 6px; margin-bottom: 14px;
+  flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px;
+  scrollbar-width: none; -ms-overflow-style: none;
+}
+.type-chips::-webkit-scrollbar { display: none; }
+.chip {
+  background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+  color: rgba(240,240,255,0.4); border-radius: 20px;
+  padding: 4px 12px; font-size: 0.75rem; cursor: pointer; font-family: inherit;
+  white-space: nowrap; transition: all 0.15s; flex-shrink: 0;
+}
+.chip:hover { background: rgba(255,255,255,0.09); color: rgba(240,240,255,0.75); }
+.chip.active { background: rgba(79,70,229,0.18); border-color: rgba(79,70,229,0.45); color: #a5b4fc; }
 
 .file-icon {
   width: 48px; height: 48px; border-radius: var(--radius-xs);
