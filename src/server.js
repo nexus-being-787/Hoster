@@ -358,7 +358,8 @@ app.post('/api/start', async (req, res) => {
   const protocol = serverState.useHttps ? 'https' : 'http';
   const localUrl = `${protocol}://${serverState.localIP}:${serverState.port}`;
   const hostnameUrl = `${protocol}://${localHostname}:${serverState.port}`;
-  let domainUrl = hostnameUrl; // Prefer .local URL for display
+  // Default: always show IP. Only show .local as primary if user explicitly set a custom domain.
+  let domainUrl = cleanDomain ? hostnameUrl : localUrl;
 
   // Start mDNS — advertise <hostnameBase>.local → current IP
   // Also advertise hoster.local as an alias if using a custom name
