@@ -1,0 +1,72 @@
+{
+  "name": "hoster",
+  "version": "1.2.0",
+  "description": "Hoster — Local Wi-Fi File Sharing Desktop App (Linux)",
+  "homepage": "https://github.com/nexus-being-787/Hoster",
+  "main": "main.js",
+  "author": "Hoster",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --linux",
+    "build:dir": "electron-builder --linux --dir"
+  },
+  "dependencies": {
+    "archiver": "^7.0.1",
+    "bonjour-service": "^1.4.4",
+    "express": "^4.19.2",
+    "ip": "^2.0.1",
+    "mime-types": "^2.1.35",
+    "multer": "^1.4.5-lts.1",
+    "multicast-dns": "^7.2.5",
+    "qrcode": "^1.5.4",
+    "selfsigned": "^5.5.0",
+    "webdav-server": "^2.6.3",
+    "ws": "^8.17.1"
+  },
+  "devDependencies": {
+    "electron": "^31.7.6",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.hosterapp.desktop",
+    "productName": "Hoster",
+    "copyright": "MIT License",
+    "files": [
+      "main.js",
+      "preload.js",
+      "assets/**",
+      "src/**",
+      "public/**",
+      "node_modules/**",
+      "!node_modules/electron/**",
+      "!node_modules/electron-builder/**"
+    ],
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png",
+      "category": "Network",
+      "description": "Share files over your local Wi-Fi network",
+      "maintainer": "Hoster"
+    },
+    "directories": {
+      "output": "dist"
+    }
+  },
+  "allowScripts": {
+    "electron@31.7.7": true
+  }
+}

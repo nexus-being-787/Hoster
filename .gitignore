@@ -1,17 +1,15 @@
 node_modules/
-*.apk
+dist/
 release/
-build/
-.DS_Store
-
-# JDK and Gradle build outputs
-HosterApp/jdk-17.0.10+7/
-HosterApp/android/.gradle/
-# Scratch and test files
-test-*.js
-test_cp_src/
 *.log
-logcat.txt
+.DS_Store
 HosterApp/android/app/build/
 HosterApp/android/build/
-
+linux/node_modules/
+linux/dist/
+windows/node_modules/
+windows/dist/
+HosterApp/jdk-*/
+HosterApp/logcat.txt
+test*.js
+test_cp_src/
