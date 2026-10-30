@@ -6,9 +6,7 @@
   <title>Hoster — File Browser</title>
   <meta name="description" content="Browse and download files shared over your local Wi-Fi network" />
   <meta name="theme-color" content="#08090f" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/assets/css/client.css?v=4" />
+  <link rel="stylesheet" href="/assets/css/client.css?v=6" />
 </head>
 <body>
   <div class="bg-grid"></div>
@@ -27,6 +25,11 @@
         </div>
         <span class="logo-text">Hoster</span>
       </div>
+      <button class="radio-btn" id="radioBtn" type="button" title="Hoster Radio — listen together, in sync">
+        <span class="radio-dot" id="radioDot"></span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="13" r="2.5"/><path d="M3 8.5h18a1 1 0 0 1 1 1V19a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V9.5a1 1 0 0 1 1-1z"/><path d="M7 8.5 17 3"/></svg>
+        <span class="radio-btn-label">Radio</span>
+      </button>
       <div class="view-toggle">
         <button class="view-btn active" id="gridViewBtn" title="Grid view">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
@@ -102,6 +105,10 @@
         <!-- Info + Download All -->
         <div class="file-info-right">
           <span id="itemCount" class="item-count">—</span>
+          <button class="btn-text hidden" id="playFolderBtn" title="Play this folder in VLC">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            VLC
+          </button>
           <button class="btn-text" id="downloadAllBtn" title="Download all as ZIP">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             ZIP
@@ -173,6 +180,47 @@
     </div>
   </div>
 
-  <script src="/assets/js/app.js?v=4"></script>
+  <!-- Hoster Radio: everyone on the Wi-Fi hears the same song at the same moment -->
+  <div class="radio-overlay hidden" id="radioPanel" role="dialog" aria-modal="true" aria-label="Hoster Radio">
+    <div class="radio-sheet">
+      <div class="radio-head">
+        <div class="radio-title"><span class="radio-dot" id="radioPanelDot"></span> Hoster Radio</div>
+        <button class="radio-close" id="radioClose" type="button" aria-label="Close">&times;</button>
+      </div>
+
+      <div class="radio-now">
+        <div class="radio-status" id="radioStatus">Off air</div>
+        <div class="radio-track" id="radioTrack">Nothing playing</div>
+        <div class="radio-bar"><div class="radio-bar-fill" id="radioBar"></div></div>
+        <div class="radio-times"><span id="radioPos">0:00</span><span id="radioDur"></span></div>
+      </div>
+
+      <div class="radio-controls">
+        <button class="radio-tune" id="radioTune" type="button">Tune in</button>
+        <label class="radio-vol" title="Volume">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg>
+          <input type="range" id="radioVol" min="0" max="1" step="0.05" value="1" aria-label="Volume" />
+        </label>
+      </div>
+      <div class="radio-sync" id="radioSync"></div>
+      <label class="radio-delay" title="Using Bluetooth or a wireless speaker and hearing this device later than the others? Raise this until it lines up.">
+        <span>Speaker delay compensation</span>
+        <input type="range" id="radioDelay" min="0" max="600" step="10" value="0" aria-label="Speaker delay compensation in milliseconds" />
+        <span class="radio-delay-val" id="radioDelayVal">0 ms</span>
+      </label>
+
+      <div class="radio-queue-head">
+        <span>Up next</span>
+        <button class="btn-text" id="radioAddFolder" type="button">+ Add this folder</button>
+      </div>
+      <ol class="radio-queue" id="radioQueue"></ol>
+      <div class="radio-note" id="radioNote"></div>
+    </div>
+  </div>
+
+  <script src="/assets/js/player-links.js?v=6"></script>
+  <script src="/assets/js/radio-sync.js?v=6"></script>
+  <script src="/assets/js/app.js?v=6"></script>
+  <script src="/assets/js/radio.js?v=6"></script>
 </body>
 </html>

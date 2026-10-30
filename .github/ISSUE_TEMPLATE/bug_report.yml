@@ -1,0 +1,38 @@
+name: Bug report
+description: Something isn't working
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you expect, and what did you see instead?
+    validations: { required: true }
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. Start sharing …\n2. On the PC, open …\n3. …"
+    validations: { required: true }
+  - type: dropdown
+    id: host
+    attributes:
+      label: Hoster runs on
+      options: [Android app, Linux desktop, Windows desktop, Plain Node.js]
+    validations: { required: true }
+  - type: input
+    id: device
+    attributes:
+      label: Phone / PC model and OS version
+      placeholder: "e.g. Pixel 7, Android 14"
+  - type: input
+    id: client
+    attributes:
+      label: Client device and browser / player
+      placeholder: "e.g. Windows 11, Chrome 130, VLC 3.0.21"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Remove your PIN and IP addresses first.
+      render: text

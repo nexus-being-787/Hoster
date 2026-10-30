@@ -12,6 +12,7 @@ const { v2: webdav } = require('webdav-server');
 
 let activeMdns = null;
 let activeShareServer = null;
+let ipWatcher = null;
 
 const wServer = new webdav.WebDAVServer({ requireAuthentification: false });
 const webdavRouter = webdav.extensions.express('/webdav', wServer);
@@ -21,6 +22,13 @@ const uploadRoutes = require('./routes/upload');
 const viewRoutes = require('./routes/view');
 const pdfRoutes = require('./routes/pdf');
 const { validatePin } = require('./utils/security');
+const auth = require('./utils/auth');
+const configStore = require('./utils/config');
+
+// Inside nodejs-mobile (the Android app) this is the bridge to React Native; in plain Node it's absent.
+let rnBridge = null;
+try { rnBridge = require('rn-bridge'); } catch (e) { /* not running in nodejs-mobile */ }
+
 
 const app = express();
 const server = http.createServer(app);
@@ -62,6 +70,31 @@ function stopMdns() {
 }
 
 // ─────────────────────────────────────────────
+// IP-change watcher — phones get a new DHCP lease whenever Wi-Fi reconnects.
+// Re-advertise <hostname>.local with the new IP and tell the host UI, so the
+// hostname URL keeps working without restarting the server.
+// ─────────────────────────────────────────────
+function startIpWatcher() {
+  stopIpWatcher();
+  ipWatcher = setInterval(() => {
+    if (!serverState.running) return;
+    let current;
+    try { current = ip.address(); } catch (e) { return; }
+    if (!current || current.startsWith('127.') || current === serverState.localIP) return;
+
+    console.log(`IP changed: ${serverState.localIP} → ${current}`);
+    serverState.localIP = current;
+    startMdns(serverState.localHostname, current); // 'hoster.local' alias reads serverState.localIP live
+
+    broadcastStatus();
+  }, 8000);
+}
+
+function stopIpWatcher() {
+  if (ipWatcher) { clearInterval(ipWatcher); ipWatcher = null; }
+}
+
+// ─────────────────────────────────────────────
 // State
 // ─────────────────────────────────────────────
 let serverState = {
@@ -84,6 +117,13 @@ let serverState = {
 };
 
 global.serverState = serverState;
+
+// Remembered settings (folder, port, toggles, PIN). Sharing itself is never auto-started.
+const config = configStore.create(configStore.resolveDir(rnBridge));
+const { Radio } = require('./utils/radio');
+const radioRoutes = require('./routes/radio');
+serverState.radio = new Radio();
+Object.assign(serverState, config.load());
 
 // ─────────────────────────────────────────────
 // Middleware
@@ -121,10 +161,72 @@ app.use((req, res, next) => {
       }
     }
 
+    // PIN: WebDAV clients can't fill in a form, so the PIN is the HTTP Basic password (any username).
+    // Same lockout as the rest of the share. Checked BEFORE anything reaches the WebDAV engine.
+    if (serverState.pinEnabled && serverState.pin) {
+      const verdict = auth.check(req, serverState, auth.basicPassword(req));
+      if (!verdict.ok) {
+        if (verdict.status === 429) {
+          origSetHeader('Retry-After', String(verdict.retryAfter));
+          return res.status(429).send('Too many wrong PIN attempts. Try again later.');
+        }
+        origSetHeader('WWW-Authenticate', 'Basic realm="Hoster - enter the PIN as the password", charset="UTF-8"');
+        return res.status(401).send('PIN required');
+      }
+    }
+
+    // "Client file uploads" off means nobody can change the folder — over WebDAV too.
+    const READ_ONLY_OK = ['GET', 'HEAD', 'OPTIONS', 'PROPFIND'];
+    if (!serverState.uploadEnabled && !READ_ONLY_OK.includes(req.method)) {
+      return res.status(403).send('Uploads are disabled, so WebDAV is read-only');
+    }
+
+    // The PIN has been verified above. Don't let webdav-server see the Basic header: it would try to
+    // authenticate that username against its own (empty) user list and answer 401 itself.
+    delete req.headers.authorization;
+
     return webdavRouter(req, res, next);
   }
   next();
 });
+
+// ─────────────────────────────────────────────
+// Host-controls lockdown. The same Express app serves the owner's Host UI (:9090) AND the
+// client share port, so without this any device on the Wi-Fi could open /host, list the phone's
+// folders, stop the server or change the PIN. Only the device running Hoster (loopback — the
+// app's WebView, the notification's Stop button, the desktop shell) may use /host and /api/*.
+// LAN devices keep the portal, /files, /upload, WebDAV, and a reduced GET /api/status.
+// Escape hatch for advanced setups: HOSTER_ALLOW_REMOTE_HOST_UI=1
+// ─────────────────────────────────────────────
+app.use((req, res, next) => { res.set('Referrer-Policy', 'no-referrer'); next(); });
+
+const ALLOW_REMOTE_HOST_UI = process.env.HOSTER_ALLOW_REMOTE_HOST_UI === '1';
+function isLoopback(addr) {
+  addr = String(addr || '').replace(/^::ffff:/, '');
+  return addr === '127.0.0.1' || addr === '::1';
+}
+function isOwnerRequest(req) {
+  return ALLOW_REMOTE_HOST_UI || isLoopback(req.socket && req.socket.remoteAddress);
+}
+app.use((req, res, next) => {
+  if (isOwnerRequest(req)) return next();
+  const p = req.path;
+  const hostOnly = p === '/host' || p.startsWith('/host/') || p === '/api' || p.startsWith('/api/');
+  if (!hostOnly) return next();
+  if (p === '/api/status' && req.method === 'GET') return next(); // client portal needs it; reduced below
+  return res.status(403).json({ error: 'Host controls are only available on the device running Hoster.' });
+});
+
+// Devices actually using the share (seen in the last 5 min). The owner's own loopback traffic and
+// the Host UI sockets are not "devices".
+function activeDeviceCount() {
+  const cutoff = Date.now() - 5 * 60 * 1000;
+  let n = 0;
+  serverState.connectedDevices.forEach(d => {
+    if (!isLoopback(d.ip) && Date.parse(d.lastSeen) >= cutoff) n++;
+  });
+  return n;
+}
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -135,20 +237,15 @@ app.use('/host', express.static(path.join(__dirname, 'host-ui')));
 // Serve client portal static assets
 app.use('/assets', express.static(path.join(__dirname, '..', 'public')));
 
-// PIN middleware for client portal
-app.use('/files', (req, res, next) => {
-  if (!serverState.pinEnabled || !serverState.pin) return next();
-  const token = req.headers['x-hoster-pin'] || req.query.pin;
-  if (!validatePin(token, serverState.pin)) {
-    return res.status(401).json({ error: 'Invalid or missing PIN' });
-  }
-  next();
-});
+// PIN guard for everything a client can read or write on the share (brute-force lockout, signed
+// path-bound tokens for VLC links, viewer cookie). /pdf calls auth.check() itself (it renders a PIN form).
+app.use(['/files', '/view', '/view-dir', '/view-asset', '/upload', '/radio'], auth.middleware(serverState));
 
 // Access log & device tracking middleware
 app.use((req, res, next) => {
   // Skip static assets from the host UI itself if we only want to track external clients
   if (req.path.startsWith('/host/') || req.path === '/host') return next();
+  if (req.path.startsWith('/api/') && isLoopback(req.socket && req.socket.remoteAddress)) return next();
 
   let clientIP = req.ip || req.connection.remoteAddress;
   if (clientIP.startsWith('::ffff:')) {
@@ -292,9 +389,44 @@ app.get('/api/filesystem', (req, res) => {
   }
 });
 
+// URLs for the current state: stable .local hostname (primary) + raw IP (backup)
+function currentUrls() {
+  const protocol = serverState.useHttps ? 'https' : 'http';
+  const localUrl = `${protocol}://${serverState.localIP}:${serverState.port}`;
+  const hostnameUrl = serverState.localHostname
+    ? `${protocol}://${serverState.localHostname}:${serverState.port}` : localUrl;
+  return { localUrl, hostnameUrl, url: serverState.preferHostname === false ? localUrl : hostnameUrl };
+}
+
+function broadcastStatus() {
+  const u = currentUrls();
+  broadcast({ type: 'status', data: {
+    running: true,
+    useHttps: serverState.useHttps,
+    localIP: serverState.localIP,
+    localHostname: serverState.localHostname,
+    localUrl: u.localUrl,
+    port: serverState.port,
+    url: u.url,
+    webdavEnabled: serverState.webdavEnabled
+  }});
+}
+
 app.get('/api/status', (req, res) => {
+  if (!isOwnerRequest(req)) {
+    // what the client portal needs, nothing about the host (paths, PIN, IPs)
+    return res.json({ running: serverState.running, uploadEnabled: serverState.uploadEnabled });
+  }
+  const urls = currentUrls();
   res.json({
+    devices: activeDeviceCount(),
     running: serverState.running,
+    url: urls.url,
+    localUrl: urls.localUrl,
+    localHostname: serverState.localHostname,
+    preferHostname: serverState.preferHostname !== false,
+    pin: serverState.pin,
+    customDomain: serverState.customDomain || '',
     sharedDir: serverState.sharedDir,
     pinEnabled: serverState.pinEnabled,
     uploadEnabled: serverState.uploadEnabled,
@@ -345,6 +477,7 @@ app.post('/api/start', async (req, res) => {
   const hostnameBase = cleanDomain || 'hoster';
   const localHostname = `${hostnameBase}.local`;
   serverState.localHostname = localHostname;
+  serverState.customDomain = cleanDomain; // remembered for next launch
 
   if (serverState.webdavEnabled) {
     wServer.setFileSystem('/', new webdav.PhysicalFileSystem(dir), () => {});
@@ -358,8 +491,11 @@ app.post('/api/start', async (req, res) => {
   const protocol = serverState.useHttps ? 'https' : 'http';
   const localUrl = `${protocol}://${serverState.localIP}:${serverState.port}`;
   const hostnameUrl = `${protocol}://${localHostname}:${serverState.port}`;
-  // Default: always show IP. Only show .local as primary if user explicitly set a custom domain.
-  let domainUrl = cleanDomain ? hostnameUrl : localUrl;
+  // Stable address: the .local hostname survives DHCP/IP changes, so it is the primary URL.
+  // The raw IP URL is still returned as a backup (some Android browsers can't resolve .local).
+  // Send preferHostname:false from the host UI to go back to IP-first.
+  serverState.preferHostname = !(req.body.preferHostname === false || req.body.preferHostname === 'false');
+  let domainUrl = serverState.preferHostname ? hostnameUrl : localUrl;
 
   // Start mDNS — advertise <hostnameBase>.local → current IP
   // Also advertise hoster.local as an alias if using a custom name
@@ -429,7 +565,8 @@ app.post('/api/start', async (req, res) => {
 
       // Attach WebSocket server to the HTTPS instance as well
       const wssShare = new WebSocket.Server({ server: activeShareServer });
-      wssShare.on('connection', (ws) => {
+      wssShare.on('connection', (ws, req) => {
+        if (!isOwnerRequest(req)) { ws.close(1008, 'forbidden'); return; }
         serverState.clients.add(ws);
         broadcast({ type: 'clients', data: { count: serverState.clients.size } });
         ws.on('close', () => {
@@ -456,8 +593,17 @@ app.post('/api/start', async (req, res) => {
     return res.status(500).json({ error: 'Failed to start listener: ' + err.message });
   }
 
+  serverState.radio.reset();
+  radioRoutes.resetProbes();
   serverState.running = true;
   serverState.startedAt = new Date().toISOString();
+  startIpWatcher();
+  config.save({
+    sharedDir: serverState.sharedDir, port: serverState.port, pinEnabled: serverState.pinEnabled,
+    pin: serverState.pin, uploadEnabled: serverState.uploadEnabled, webdavEnabled: serverState.webdavEnabled,
+    useHttps: serverState.useHttps, preferHostname: serverState.preferHostname !== false,
+    customDomain: serverState.customDomain || '',
+  });
 
   broadcast({ type: 'status', data: {
     running: true,
@@ -473,8 +619,11 @@ app.post('/api/start', async (req, res) => {
 });
 
 app.post('/api/stop', (req, res) => {
+  serverState.radio.reset();
+  radioRoutes.resetProbes();
   serverState.running = false;
   serverState.startedAt = null;
+  stopIpWatcher();
   stopMdns();
   if (activeShareServer) {
     try { activeShareServer.close(); } catch(e) {}
@@ -485,7 +634,12 @@ app.post('/api/stop', (req, res) => {
 });
 
 app.post('/api/settings', (req, res) => {
-  const { pin, pinEnabled, uploadEnabled, webdavEnabled, useHttps } = req.body;
+  const { pin, pinEnabled, uploadEnabled, webdavEnabled, useHttps, preferHostname } = req.body;
+  if (typeof preferHostname !== 'undefined') {
+    // hostname-first (hoster.local, survives IP changes) vs IP-first (browsers without mDNS)
+    serverState.preferHostname = !(preferHostname === false || preferHostname === 'false');
+    if (serverState.running) broadcastStatus(); // URL card + QR update immediately
+  }
   if (typeof pinEnabled !== 'undefined') serverState.pinEnabled = !!pinEnabled;
   if (typeof uploadEnabled !== 'undefined') serverState.uploadEnabled = !!uploadEnabled;
   if (typeof webdavEnabled !== 'undefined') {
@@ -496,14 +650,18 @@ app.post('/api/settings', (req, res) => {
   }
   if (typeof useHttps !== 'undefined') serverState.useHttps = !!useHttps;
   if (pin !== undefined) serverState.pin = pin;
-  broadcast({ type: 'settings', data: { pinEnabled: serverState.pinEnabled, uploadEnabled: serverState.uploadEnabled, webdavEnabled: serverState.webdavEnabled, useHttps: serverState.useHttps } });
+  config.save({
+    pinEnabled: serverState.pinEnabled, pin: serverState.pin, uploadEnabled: serverState.uploadEnabled,
+    webdavEnabled: serverState.webdavEnabled, useHttps: serverState.useHttps,
+    preferHostname: serverState.preferHostname !== false,
+  });
+  broadcast({ type: 'settings', data: { pinEnabled: serverState.pinEnabled, uploadEnabled: serverState.uploadEnabled, webdavEnabled: serverState.webdavEnabled, useHttps: serverState.useHttps, preferHostname: serverState.preferHostname !== false } });
   res.json({ success: true });
 });
 
 app.get('/api/qrcode', async (req, res) => {
   try {
-    const protocol = serverState.useHttps ? 'https' : 'http';
-    const url = `${protocol}://${serverState.localIP}:${serverState.port}`;
+    const url = currentUrls().url; // follows the hostname-first / IP-first toggle
     const dataUrl = await QRCode.toDataURL(url, {
       width: 280,
       margin: 2,
@@ -518,6 +676,9 @@ app.get('/api/qrcode', async (req, res) => {
 // ─────────────────────────────────────────────
 // File Routes
 // ─────────────────────────────────────────────
+app.use('/radio', radioRoutes.guest);
+app.use('/api/radio', radioRoutes.admin); // owner only: the loopback guard above refuses everyone else
+
 app.use('/files', (req, res, next) => {
   if (!serverState.running || !serverState.sharedDir) {
     return res.status(503).json({ error: 'Server not running or no directory selected' });
@@ -590,6 +751,7 @@ app.get('/', (req, res) => {
 // WebSocket: Real-time broadcast
 // ─────────────────────────────────────────────
 wss.on('connection', (ws, req) => {
+  if (!isOwnerRequest(req)) { ws.close(1008, 'forbidden'); return; }
   serverState.clients.add(ws);
   broadcast({ type: 'clients', data: { count: serverState.clients.size } });
 
@@ -629,8 +791,8 @@ global.broadcast = broadcast;
 const HOST_PORT = process.env.HOST_PORT || process.env.HOST_UI_PORT || 9090;
 server.listen(HOST_PORT, '0.0.0.0', () => {
   console.log(`Host UI running on ${HOST_PORT}`);
-  if (typeof rn_bridge !== 'undefined') {
-    rn_bridge.channel.send('started');
+  if (rnBridge) {
+    rnBridge.channel.send('started');
   }
   console.log('');
   console.log('  ██╗  ██╗ ██████╗ ███████╗████████╗███████╗██████╗');

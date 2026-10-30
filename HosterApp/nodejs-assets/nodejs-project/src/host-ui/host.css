@@ -2,7 +2,19 @@
    Hoster Host UI — Design System
    ───────────────────────────────────────────── */
 
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+/* Self-hosted fonts (OFL-1.1) — works offline, no Google requests. */
+@font-face { font-family: 'Outfit'; font-style: normal; font-weight: 100 900; font-display: swap;
+  src: url('fonts/outfit-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF; }
+@font-face { font-family: 'Outfit'; font-style: normal; font-weight: 100 900; font-display: swap;
+  src: url('fonts/outfit-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 100 800; font-display: swap;
+  src: url('fonts/jetbrains-mono-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF; }
+@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 100 800; font-display: swap;
+  src: url('fonts/jetbrains-mono-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
 
 :root {
   --bg:        #08090f;
@@ -504,3 +516,22 @@ body {
   color: #34c759;
   border: 1px solid rgba(52, 199, 89, 0.2);
 }
+
+/* ── Hoster Radio card ─────────────────────────────────────────── */
+.radio-live { margin-left: 10px; font-size: 0.65rem; letter-spacing: 0.12em; font-weight: 700; color: var(--green);
+  border: 1px solid rgba(34,197,94,0.5); border-radius: 999px; padding: 2px 8px; }
+.radio-now-host { padding: 4px 2px 12px; }
+.radio-track-host { font-size: 1.15rem; font-weight: 600; overflow-wrap: anywhere; }
+.radio-meta-host { color: var(--text-2); font-size: 0.85rem; margin-top: 4px; }
+.radio-transport { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; }
+.radio-transport .btn.on { color: var(--cyan); border-color: var(--border-hi); background: var(--cyan-dim); }
+.radio-guest-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.radio-queue-host { list-style: none; margin: 0; padding: 0; max-height: 240px; overflow-y: auto; }
+.radio-queue-host li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--radius-xs); cursor: pointer; font-size: 0.9rem; }
+.radio-queue-host li:hover { background: var(--surface); }
+.radio-queue-host li.current { background: var(--cyan-dim); font-weight: 600; }
+.radio-queue-host li .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.radio-queue-host li .dur { color: var(--text-3); font-variant-numeric: tabular-nums; }
+.radio-queue-host li .rm { background: none; border: none; color: var(--text-3); cursor: pointer; font-size: 1.1rem; padding: 0 4px; }
+.radio-queue-host li .rm:hover { color: var(--red); }
+.radio-queue-host .empty { color: var(--text-3); justify-content: center; cursor: default; }

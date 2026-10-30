@@ -4,8 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Hoster — Dashboard</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/host/host.css" />
 </head>
 <body>
@@ -96,6 +94,17 @@
             <label class="field-label">WebDAV</label>
             <label class="toggle-switch" title="Mount as network drive (e.g., PS2 OPL, Windows Explorer)">
               <input type="checkbox" id="webdavToggle" />
+              <span class="toggle-thumb"></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Main address: stable hostname vs raw IP -->
+        <div class="field-row">
+          <div class="field-group">
+            <label class="field-label">Main address: hoster.local (survives IP changes)</label>
+            <label class="toggle-switch" title="On: share hoster.local. Off: share the IP address (use this if a device can't open .local).">
+              <input type="checkbox" id="hostnameToggle" checked />
               <span class="toggle-thumb"></span>
             </label>
           </div>
@@ -198,6 +207,42 @@
       </div>
 
       <!-- Connected Devices Card -->
+      <!-- Hoster Radio: one station, everyone on the Wi-Fi hears the same moment -->
+      <div class="card radio-card hidden" id="radioCard">
+        <div class="card-header">
+          <div class="card-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="13" r="2.5"/><path d="M3 8.5h18a1 1 0 0 1 1 1V19a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V9.5a1 1 0 0 1 1-1z"/><path d="M7 8.5 17 3"/></svg>
+            Hoster Radio
+            <span class="radio-live hidden" id="hRadioLive">LIVE</span>
+          </div>
+          <button class="btn btn-ghost" id="hRadioClear" title="Empty the queue">Clear</button>
+        </div>
+
+        <div class="radio-now-host">
+          <div class="radio-track-host" id="hRadioTrack">Nothing playing</div>
+          <div class="radio-meta-host" id="hRadioMeta">Queue a folder to start the station. Anyone on your Wi-Fi can tune in from the portal.</div>
+        </div>
+
+        <div class="radio-transport">
+          <button class="btn btn-ghost" id="hRadioPrev" title="Previous">&#9198;</button>
+          <button class="btn btn-primary" id="hRadioPlay" title="Play / pause">&#9654;</button>
+          <button class="btn btn-ghost" id="hRadioNext" title="Next">&#9197;</button>
+          <button class="btn btn-ghost" id="hRadioShuffle" title="Shuffle">&#128256;</button>
+          <button class="btn btn-ghost" id="hRadioRepeat" title="Repeat: off">&#128257;</button>
+          <button class="btn btn-secondary" id="hRadioQueueAll" title="Add every song in the shared folder">+ Queue shared folder</button>
+        </div>
+
+        <div class="field-group radio-guest-row">
+          <label class="field-label">Let guests add songs to the queue</label>
+          <label class="toggle-switch">
+            <input type="checkbox" id="hRadioGuests" />
+            <span class="toggle-thumb"></span>
+          </label>
+        </div>
+
+        <ol class="radio-queue-host" id="hRadioQueue"></ol>
+      </div>
+
       <div class="card devices-card" id="devicesCard">
         <div class="card-header">
           <div class="card-title">

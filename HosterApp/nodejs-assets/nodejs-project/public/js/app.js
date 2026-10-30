@@ -29,6 +29,7 @@ const els = {
   searchInput: document.getElementById('searchInput'),
   searchClear: document.getElementById('searchClear'),
   downloadAllBtn: document.getElementById('downloadAllBtn'),
+  playFolderBtn: document.getElementById('playFolderBtn'),
   
   uploadZone: document.getElementById('uploadZone'),
   dropZone: document.getElementById('dropZone'),
@@ -79,9 +80,14 @@ function setupEventListeners() {
     renderFiles();
   });
   
+  els.playFolderBtn.addEventListener('click', () => {
+    const normPath = state.currentPath.startsWith('/') ? state.currentPath : '/' + state.currentPath;
+    openInExternalPlayer({ path: normPath, kind: 'audio', folder: true });
+  });
+
   els.downloadAllBtn.addEventListener('click', () => {
     const normPath = state.currentPath.startsWith('/') ? state.currentPath : '/' + state.currentPath;
-    const url = `/files/zip?path=${encodeURIComponent(normPath)}` + (state.pin ? `&pin=${encodeURIComponent(state.pin)}` : '');
+    const url = `/files/zip?path=${encodeURIComponent(normPath)}`;
     window.location.href = url;
   });
   
@@ -229,6 +235,7 @@ async function loadFiles(path) {
     const data = await res.json();
     state.currentPath = data.path;
     state.files = data.items;
+    els.playFolderBtn.classList.toggle('hidden', !data.items.some(f => f.type === 'file' && /^(audio|video)\//.test(f.mimeType || '')));
     
     // Reset search filter on directory navigation
     if (state.searchQuery) {
@@ -361,9 +368,9 @@ function renderFiles() {
         if (action === 'view') {
           const normPath = file.path.startsWith('/') ? file.path.slice(1) : file.path;
           if (isPdfFile(file)) {
-            window.location.href = '/pdf?path=' + encodeURIComponent(normPath) + (state.pin ? '&pin=' + state.pin : '');
+            window.location.href = '/pdf?path=' + encodeURIComponent(normPath);
           } else {
-            window.location.href = '/view?path=' + encodeURIComponent(normPath) + (state.pin ? '&pin=' + state.pin : '');
+            window.location.href = '/view?path=' + encodeURIComponent(normPath);
           }
         }
         return;
@@ -374,10 +381,10 @@ function renderFiles() {
         loadFiles(file.path);
       } else if (isPdfFile(file)) {
         const normPath = file.path.startsWith('/') ? file.path.slice(1) : file.path;
-        window.location.href = '/pdf?path=' + encodeURIComponent(normPath) + (state.pin ? '&pin=' + state.pin : '');
+        window.location.href = '/pdf?path=' + encodeURIComponent(normPath);
       } else if (isHtmlFile(file)) {
         const normPath = file.path.startsWith('/') ? file.path.slice(1) : file.path;
-        window.location.href = '/view?path=' + encodeURIComponent(normPath) + (state.pin ? '&pin=' + state.pin : '');
+        window.location.href = '/view?path=' + encodeURIComponent(normPath);
       } else {
         if (isPreviewable(file.mimeType)) {
           openPreview(file);
@@ -564,8 +571,8 @@ function renderPreview() {
     menuDropdown.classList.add('hidden');
   }
   
-  const streamUrl = `/files/stream?path=${encodeURIComponent(file.path)}${state.pin ? '&pin=' + state.pin : ''}`;
-  const downloadUrl = `/files/download?path=${encodeURIComponent(file.path)}${state.pin ? '&pin=' + state.pin : ''}`;
+  const streamUrl = `/files/stream?path=${encodeURIComponent(file.path)}`;
+  const downloadUrl = `/files/download?path=${encodeURIComponent(file.path)}`;
   
   els.previewDownload.href = downloadUrl;
   
@@ -576,28 +583,26 @@ function renderPreview() {
     img.onerror = () => { els.previewContent.innerHTML = '<div class="error-title">Failed to load image</div>'; };
   } else {
     // For anything that is not an image (video, audio, or unknown), populate the external players
-    const fullUrl = location.host + streamUrl;
-    const scheme = location.protocol.replace(':', '');
     const isAndroid = /android/i.test(navigator.userAgent);
-    const m3uUrl = `/files/playlist.m3u?path=${encodeURIComponent(file.path)}${state.pin ? '&pin=' + state.pin : ''}`;
-    
-    let vlcHref = isAndroid 
-      ? `intent://${fullUrl}#Intent;package=org.videolan.vlc;type=${file.mimeType.startsWith('video/') ? 'video' : 'audio'}/*;scheme=${scheme};end`
-      : m3uUrl;
+    const vlcHref = '#'; // the real link is built at click time (live IP + signed token, never the PIN)
+    const vlcKind = file.mimeType.startsWith('video/') ? 'video' : 'audio';
+    const vlcAttrs = `class="vlc-play" data-android="${isAndroid ? '1' : ''}" data-path="${encodeURIComponent(file.path)}" data-kind="${vlcKind}"`;
     
     if (menuBtn && menuDropdown) {
       menuBtn.classList.remove('hidden');
       menuDropdown.innerHTML = `
-        <a href="${m3uUrl}" download="${file.name.replace(/"/g,'')}.m3u"
+        <a href="${vlcHref}" ${vlcAttrs}
            style="background: #2a2a3e; color: #fff; padding: 10px 16px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 8px;">
-           <span style="color: #ff8800; display: flex;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></span> Download Playlist for VLC
+           <span style="color: #ff8800; display: flex;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg></span> Play in VLC
         </a>
-        <a href="${vlcHref}" 
+        ${/^(audio|video)\//.test(file.mimeType) ? `
+        <a href="#" class="radio-add" data-path="${encodeURIComponent(file.path)}"
            style="background: #2a2a3e; color: #fff; padding: 10px 16px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 8px;">
-           <span style="color: #ff8800; display: flex;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg></span> Play in VLC App
+           <span style="color: #ff8800; display: flex;">&#128251;</span> Add to Radio
         </a>
+        ` : ''}
         ${(isAndroid && file.mimeType.startsWith('video/')) ? `
-        <a href="intent://${fullUrl}#Intent;package=com.mxtech.videoplayer.ad;type=video/*;scheme=${scheme};end" 
+        <a href="#" class="vlc-play" data-player="mx" data-android="1" data-path="${encodeURIComponent(file.path)}" data-kind="video"
            style="background: #2a2a3e; color: #fff; padding: 10px 16px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 8px;">
            <span style="color: #2196F3; display: flex;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg></span> Play in MX Player
         </a>` : ''}
@@ -641,12 +646,12 @@ function renderPreview() {
               <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="#00e5ff" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
             </div>
             <div>
-              <div style="font-size:1.1rem;font-weight:700;color:#fff;margin-bottom:8px">${file.name}</div>
-              <div style="font-size:0.85rem;color:#a0a0b0;line-height:1.6">This lossless audio format (${file.mimeType.split('/')[1].toUpperCase()}) cannot be decoded by the browser.<br>Download the playlist and open it in VLC or another audio player.</div>
+              <div style="font-size:1.1rem;font-weight:700;color:#fff;margin-bottom:8px">${escapeHtml(file.name)}</div>
+              <div style="font-size:0.85rem;color:#a0a0b0;line-height:1.6">This lossless audio format (${file.mimeType.split('/')[1].toUpperCase()}) cannot be decoded by the browser.<br>Tap below to stream it straight into VLC.</div>
             </div>
-            <a href="${m3uUrl}" download="${file.name.replace(/"/g,'')}.m3u" style="background:linear-gradient(135deg,#ff8800,#ff5500);color:#fff;padding:14px 28px;border-radius:12px;text-decoration:none;font-size:1rem;font-weight:700;display:flex;align-items:center;gap:10px;box-shadow:0 6px 20px rgba(255,136,0,0.4);transition:all 0.2s">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-              Download Playlist for VLC
+            <a href="${vlcHref}" ${vlcAttrs} style="background:linear-gradient(135deg,#ff8800,#ff5500);color:#fff;padding:14px 28px;border-radius:12px;text-decoration:none;font-size:1rem;font-weight:700;display:flex;align-items:center;gap:10px;box-shadow:0 6px 20px rgba(255,136,0,0.4);transition:all 0.2s">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+              Play in VLC
             </a>
           </div>`;
       } else {
@@ -657,12 +662,12 @@ function renderPreview() {
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#2196F3" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
             </div>
             <div style="text-align:center">
-              <div style="font-size:1rem;font-weight:600;color:#fff;margin-bottom:4px">${file.name}</div>
+              <div style="font-size:1rem;font-weight:600;color:#fff;margin-bottom:4px">${escapeHtml(file.name)}</div>
               <div style="font-size:0.8rem;color:#a0a0b0">${file.mimeType}</div>
             </div>
             <div style="width:100%; align-self:stretch;">
               <audio controls autoplay name="media" style="width:100%; min-width:300px; height:54px; border-radius:12px; outline:none; background:#f1f3f4;">
-                <source src="${streamUrl}" type="${file.mimeType}" onerror="this.parentElement.outerHTML='<div style=\\'background:rgba(255,136,0,0.1);color:#ff8800;padding:16px;border-radius:12px;font-size:0.95rem\\'><b>Format Not Supported</b><br>Your browser cannot decode this specific audio file (it may be 24-bit or use an unsupported codec). Please use the 3-dot menu above to download the playlist and open it in VLC.</div>'">
+                <source src="${streamUrl}" type="${file.mimeType}" onerror="this.parentElement.outerHTML='<div style=\\'background:rgba(255,136,0,0.1);color:#ff8800;padding:16px;border-radius:12px;font-size:0.95rem\\'><b>Format Not Supported</b><br>Your browser cannot decode this specific audio file (it may be 24-bit or use an unsupported codec). Please use the 3-dot menu above and choose Play in VLC.</div>'">
               </audio>
             </div>
           </div>`;
@@ -685,7 +690,7 @@ function renderPreview() {
 function triggerDownload(filePath, isZip) {
   const endpoint = isZip ? '/files/zip' : '/files/download';
   const normPath = filePath.startsWith('/') ? filePath : '/' + filePath;
-  const url = `${endpoint}?path=${encodeURIComponent(normPath)}${state.pin ? '&pin=' + state.pin : ''}`;
+  const url = `${endpoint}?path=${encodeURIComponent(normPath)}`;
   
   const a = document.createElement('a');
   a.href = url;
@@ -777,7 +782,7 @@ function getFileIcon(file) {
     // Attempt thumbnail if small enough, else just icon
     if (file.size < 50000000) { // < 50MB (modern photos are large)
       const normPath = file.path.startsWith('/') ? file.path : '/' + file.path;
-      const url = `/files/stream?path=${encodeURIComponent(normPath)}${state.pin ? '&pin=' + state.pin : ''}`;
+      const url = `/files/stream?path=${encodeURIComponent(normPath)}`;
       return `<img src="${url}" loading="lazy" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.onerror=null;this.parentElement.innerHTML='<svg viewBox=\\'0 0 24 24\\' fill=\\'none\\' stroke=\\'currentColor\\' stroke-width=\\'2\\'><rect x=\\'3\\' y=\\'3\\' width=\\'18\\' height=\\'18\\' rx=\\'2\\' ry=\\'2\\'/><circle cx=\\'8.5\\' cy=\\'8.5\\' r=\\'1.5\\'/><polyline points=\\'21 15 16 10 5 21\\'/></svg>';" />`;
     }
     return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`;
@@ -797,3 +802,106 @@ function getFileIcon(file) {
 
 // Start app
 init();
+
+
+// ─────────────────────────────────────────────
+// VLC launcher — nothing is saved to disk.
+//  1. Ask the server which address we really reached it on RIGHT NOW (IPs change daily),
+//     so VLC gets a literal IP and never needs to resolve hoster.local.
+//  2. Android → intent:// ; iOS/desktop → vlc://http://ip:port/files/stream?...
+//  3. If no app picks the link up (desktop without the vlc:// handler), copy the stream URL so the
+//     user can paste it in VLC (Ctrl+N) — still no file saved — and offer the one-time setup.
+// ─────────────────────────────────────────────
+function hosterToast(html, ms) {
+  let t = document.getElementById('__hosterToast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = '__hosterToast';
+    t.style.cssText = 'position:fixed;left:50%;bottom:28px;transform:translateX(-50%);max-width:92vw;background:#1e1e2e;color:#fff;border:1px solid rgba(255,136,0,.5);border-radius:12px;padding:12px 16px;font-size:14px;line-height:1.5;z-index:99999;box-shadow:0 8px 30px rgba(0,0,0,.5);text-align:center';
+    document.body.appendChild(t);
+  }
+  t.innerHTML = html;
+  t.style.display = 'block';
+  clearTimeout(t._h);
+  t._h = setTimeout(() => { t.style.display = 'none'; }, ms || 9000);
+}
+
+function copyText(text) {
+  // navigator.clipboard needs HTTPS; plain http://<lan-ip> pages need the textarea fallback
+  if (navigator.clipboard && window.isSecureContext) {
+    return navigator.clipboard.writeText(text).then(() => true).catch(() => false);
+  }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return Promise.resolve(ok);
+  } catch (e) { return Promise.resolve(false); }
+}
+
+// Opens a file (or a whole folder as a playlist) in VLC / MX Player. The link handed to the player
+// carries a short-lived token bound to that path — the PIN never appears in it.
+async function openInExternalPlayer({ path: filePath, kind, folder, player, android }) {
+  const enc = encodeURIComponent;
+
+  // Live address + tokens from the server (falls back to wherever this page was loaded from)
+  let protocol = location.protocol.replace(':', '');
+  let host = location.host;
+  let t = '';
+  let pt = '';
+  try {
+    const r = await fetch(`/files/addr?path=${enc(filePath)}`, {
+      cache: 'no-store',
+      headers: state.pin ? { 'x-hoster-pin': state.pin } : {},
+    });
+    if (r.ok) {
+      const j = await r.json();
+      if (j.host) { protocol = j.protocol || protocol; host = j.host; }
+      t = j.t || '';
+      pt = j.pt || '';
+    }
+  } catch (err) { /* keep fallback */ }
+
+  const links = HosterLinks.build({ path: filePath, kind, folder, player, protocol, host, t, pt, pin: state.pin });
+
+  if (android) {
+    window.location.href = links.intentUrl;
+    return;
+  }
+
+  const httpUrl = links.httpUrl;
+  let launched = false;
+  const mark = () => { launched = true; };
+  window.addEventListener('blur', mark, { once: true });
+  document.addEventListener('visibilitychange', mark, { once: true });
+
+  window.location.href = links.vlcUrl;
+
+  setTimeout(async () => {
+    window.removeEventListener('blur', mark);
+    document.removeEventListener('visibilitychange', mark);
+    if (launched) return;
+    const ok = await copyText(httpUrl);
+    hosterToast(
+      (ok ? `${folder ? 'Playlist' : 'Stream'} link copied. In VLC press <b>Ctrl+N</b>, paste, Play.` : 'VLC didn\'t open.') +
+      '<br><a href="/files/setup-vlc.bat" style="color:#ff8800;font-weight:600">One-time Windows setup</a> makes this button open VLC directly.',
+      12000
+    );
+  }, 1800);
+}
+
+document.addEventListener('click', (e) => {
+  const a = e.target.closest && e.target.closest('a.vlc-play');
+  if (!a) return;
+  e.preventDefault();
+  openInExternalPlayer({
+    path: decodeURIComponent(a.dataset.path || ''),
+    kind: a.dataset.kind || 'audio',
+    player: a.dataset.player,
+    android: !!a.dataset.android,
+  });
+});

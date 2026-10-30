@@ -7,17 +7,7 @@ const router = express.Router();
 const path = require('path');
 const fs = require('fs');
 const { validatePin } = require('../utils/security');
-
-function resolveSafePath(base, reqPath) {
-  if (!base) return null;
-  const safeBase = path.resolve(base);
-  const decoded = decodeURIComponent(reqPath || '');
-  const relativePath = decoded.replace(/^[\/\\]+/, '');
-  const resolved = path.resolve(safeBase, relativePath);
-  const rel = path.relative(safeBase, resolved);
-  if (rel.startsWith('..') || path.isAbsolute(rel)) return null;
-  return resolved;
-}
+const { resolveSafePath } = require('../utils/paths');
 
 // GET /pdf?path=<file>[&pin=<pin>]
 // Serves an embedded PDF reader using the browser's native PDF rendering.
@@ -28,8 +18,12 @@ router.get('/', (req, res) => {
 
   // PIN check
   if (pinEnabled) {
-    const clientPin = req.query.pin || req.headers['x-pin'];
-    if (!validatePin(clientPin, serverPin)) {
+    const verdict = require('../utils/auth').authorized(req, global.serverState);
+    if (verdict.status === 429) {
+      res.set('Retry-After', String(verdict.retryAfter));
+      return res.status(429).send('Too many wrong PIN attempts. Try again later.');
+    }
+    if (!verdict.ok) {
       return res.status(403).send(`<!DOCTYPE html>
 <html><head><title>PIN Required</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -63,6 +57,14 @@ document.getElementById('pinInput').addEventListener('keydown', e => {
     }
   }
 
+  // Unlocked through the form (?pin=…): remember it in the session cookie and drop the PIN from the address bar.
+  if (pinEnabled && req.query.pin && require('../utils/auth').check(req, global.serverState).viaPin) {
+    require('../utils/auth').setSessionCookie(req, res);
+    const clean = new URL(req.originalUrl, 'http://hoster.invalid');
+    clean.searchParams.delete('pin');
+    return res.redirect(clean.pathname + clean.search);
+  }
+
   const filePath = resolveSafePath(sharedDir, req.query.path || '');
   if (!filePath) return res.status(403).send('Access denied');
   if (!fs.existsSync(filePath)) return res.status(404).send('File not found');
@@ -71,12 +73,11 @@ document.getElementById('pinInput').addEventListener('keydown', e => {
   if (stat.isDirectory()) return res.status(400).send('Not a file');
 
   const fileName = path.basename(filePath);
-  const pinParam = req.query.pin ? `&pin=${encodeURIComponent(req.query.pin)}` : '';
 
   // The PDF is served via /view-dir/* (the existing transparent file server)
   // We just build the relative path from sharedDir to the file
   const rel = path.relative(sharedDir, filePath).replace(/\\/g, '/');
-  const pdfSrc = `/view-dir/${encodeURIComponent(rel)}${pinParam ? '?pin=' + encodeURIComponent(req.query.pin) : ''}`;
+  const pdfSrc = `/view-dir/${encodeURIComponent(rel)}`; // authorised by the session cookie — no PIN in the URL
 
   const html = `<!DOCTYPE html>
 <html lang="en">

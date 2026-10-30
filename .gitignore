@@ -11,5 +11,6 @@ windows/node_modules/
 windows/dist/
 HosterApp/jdk-*/
 HosterApp/logcat.txt
-test*.js
+/test*.js
 test_cp_src/
+*.zip

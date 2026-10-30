@@ -8,8 +8,8 @@ A Windows desktop build of **Hoster** — the same Wi-Fi file sharing server fro
 |------|---------|
 | `main.js` | Electron main process — starts the server, creates the app window, system tray |
 | `preload.js` | IPC bridge — native folder picker, desktop tweaks |
-| `src/` → `../src` | Symlink to the shared Express server source |
-| `public/` → `../public` | Symlink to the shared client portal |
+| `src/` | Mirror of the root `../src` (kept in sync by `npm run sync` in the repo root — don't edit here) |
+| `public/` | Mirror of the root `../public` (same — don't edit here) |
 | `assets/` | App icon (`.ico`) and tray icon (`.png`) |
 
 ## Development

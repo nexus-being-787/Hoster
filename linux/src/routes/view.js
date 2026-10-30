@@ -3,16 +3,7 @@ const router = express.Router();
 const path = require('path');
 const fs = require('fs');
 const mime = require('mime-types');
-
-function resolveSafePath(base, reqPath) {
-  if (!base) return null;
-  const safeBase = path.resolve(base);
-  const relativePath = (reqPath || '').replace(/^[\/\\]+/, '');
-  const resolved = path.resolve(safeBase, relativePath);
-  const rel = path.relative(safeBase, resolved);
-  if (rel.startsWith('..') || path.isAbsolute(rel)) return null;
-  return resolved;
-}
+const { resolveSafePath } = require('../utils/paths');
 
 // ─────────────────────────────────────────────
 // GET /view?path=<relative_html_path>
@@ -31,13 +22,9 @@ router.get('/', (req, res) => {
     return res.status(503).send('Server not running or no directory selected.');
   }
 
-  // PIN protection
-  if (global.serverState.pinEnabled && global.serverState.pin) {
-    const { validatePin } = require('../utils/security');
-    const token = req.headers['x-hoster-pin'] || req.query.pin;
-    if (!validatePin(token, global.serverState.pin)) {
-      return res.status(401).send('PIN required. Please go back and enter the PIN in the file browser first.');
-    }
+  // PIN protection (the PIN guard in server.js already ran; this keeps the route safe if it is ever mounted without it)
+  if (!require('../utils/auth').authorized(req, global.serverState).ok) {
+    return res.status(401).send('PIN required. Please go back and enter the PIN in the file browser first.');
   }
 
   const reqPath = (req.query.path || '').replace(/^[\/\\]+/, ''); // strip leading slash

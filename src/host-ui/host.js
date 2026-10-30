@@ -21,6 +21,7 @@ const domainInput = $('domainInput');
 const httpsToggle = $('httpsToggle');
 const uploadToggle= $('uploadToggle');
 const webdavToggle= $('webdavToggle');
+const hostnameToggle = $('hostnameToggle');
 const dirPreview  = $('dirPreview');
 const shareUrl    = $('shareUrl');
 const urlCard     = $('urlCard');
@@ -75,6 +76,8 @@ function formatTime(iso) {
 
 function setServerState(running, url, webdavEnabled, localHostname, localUrl) {
   serverRunning = running;
+  $('radioCard').classList.toggle('hidden', !running);
+  if (running) refreshRadio();
 
   statusDot.className = 'status-dot ' + (running ? 'on' : 'off');
   statusText.textContent = running ? 'Running' : 'Stopped';
@@ -102,11 +105,9 @@ function setServerState(running, url, webdavEnabled, localHostname, localUrl) {
       ipHint.style.cssText = 'font-size:0.72rem;color:rgba(240,240,255,0.4);margin-top:4px;font-family:monospace;';
       shareUrl.parentNode.insertBefore(ipHint, shareUrl.nextSibling);
     }
-    // Only show .local hint if it differs from the main displayed URL (i.e. user set a custom domain)
-    const hostnameUrl = localHostname && localUrl && url !== localUrl
-      ? `Also: http://${localHostname}:${new URL(url).port}`
-      : '';
-    ipHint.textContent = hostnameUrl;
+    // Primary is the stable .local URL; show the raw IP as a backup (it changes with DHCP)
+    const backupHint = localUrl && url !== localUrl ? `Backup (IP, may change): ${localUrl}` : '';
+    ipHint.textContent = backupHint;
 
     if (webdavEnabled) {
       webdavUrlContainer.classList.remove('hidden');
@@ -154,6 +155,7 @@ async function init() {
 
     httpsToggle.checked = !!data.useHttps;
     uploadToggle.checked = !!data.uploadEnabled;
+    hostnameToggle.checked = data.preferHostname !== false;
     webdavToggle.checked = !!data.webdavEnabled;
 
     if (data.running) {
@@ -169,11 +171,17 @@ async function init() {
       startUptimeTicker();
       showPreview(data.sharedDir);
     } else {
-      if (!dirPathInput.value) {
-        dirPathInput.value = '/storage/emulated/0/Download';
-        showPreview('/storage/emulated/0/Download');
-      }
+      // Not sharing: refill the form from remembered settings (or sensible defaults)
+      const dir = data.sharedDir || '/storage/emulated/0/Download';
+      if (!dirPathInput.value) { dirPathInput.value = dir; showPreview(dir); }
+      if (data.port) portInput.value = data.port;
+      if (data.customDomain) domainInput.value = data.customDomain;
     }
+
+    // PIN settings are remembered too
+    pinToggle.checked = !!data.pinEnabled;
+    pinGroup.classList.toggle('hidden', !pinToggle.checked);
+    if (data.pin) pinInput.value = data.pin;
 
     statClients.textContent = data.clients || '0';
     statBytes.textContent = formatBytes(data.bytesServed || 0);
@@ -304,6 +312,7 @@ serverToggle.addEventListener('click', async () => {
           pin: pinInput.value,
           uploadEnabled: uploadToggle.checked,
           webdavEnabled: webdavToggle.checked,
+          preferHostname: hostnameToggle.checked,
         })
       });
       const data = await res.json();
@@ -469,6 +478,19 @@ settingsBtn.addEventListener('click', () => settingsModal.classList.remove('hidd
 settingsClose.addEventListener('click', () => settingsModal.classList.add('hidden'));
 settingsModal.addEventListener('click', e => { if (e.target === settingsModal) settingsModal.classList.add('hidden'); });
 
+// Switching the main address applies immediately while sharing (URL card + QR refresh via WebSocket)
+hostnameToggle.addEventListener('change', async () => {
+  if (!serverRunning) return; // applied on next Start
+  try {
+    await fetch(`${API}/api/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ preferHostname: hostnameToggle.checked })
+    });
+    showToast(hostnameToggle.checked ? 'Main address: hoster.local' : 'Main address: IP');
+  } catch (e) { showToast('Failed to change address', 'error'); }
+});
+
 pinToggle.addEventListener('change', () => {
   pinGroup.classList.toggle('hidden', !pinToggle.checked);
 });
@@ -608,3 +630,91 @@ window.unblockDevice = function(ip) {
     }
   });
 };
+
+// ─────────────────────────────────────────────
+// Hoster Radio (owner controls). Titles come from file names/ID3 tags: textContent only, never innerHTML.
+// ─────────────────────────────────────────────
+const hRadio = {
+  live: $('hRadioLive'), track: $('hRadioTrack'), meta: $('hRadioMeta'), queue: $('hRadioQueue'),
+  play: $('hRadioPlay'), shuffle: $('hRadioShuffle'), repeat: $('hRadioRepeat'), guests: $('hRadioGuests'),
+};
+let radioState = null;
+
+function fmtMs(ms) {
+  const s = Math.max(0, Math.floor((ms || 0) / 1000));
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+
+function renderRadio(s) {
+  if (!s || !Array.isArray(s.queue)) return;
+  radioState = s;
+  const playing = s.status === 'playing';
+  hRadio.live.classList.toggle('hidden', !playing);
+  hRadio.track.textContent = s.track ? s.track.title : 'Nothing playing';
+  hRadio.meta.textContent = s.track
+    ? `${playing ? 'Playing' : 'Paused'} · ${fmtMs(s.positionMs)}${s.track.durationMs ? ' / ' + fmtMs(s.track.durationMs) : ''} · ${s.queue.length} in queue`
+    : 'Queue a folder to start the station. Anyone on your Wi-Fi can tune in from the portal.';
+  hRadio.play.textContent = playing ? '\u23F8' : '\u25B6';
+  hRadio.shuffle.classList.toggle('on', !!s.shuffle);
+  hRadio.repeat.classList.toggle('on', s.repeat !== 'off');
+  hRadio.repeat.title = 'Repeat: ' + s.repeat;
+  hRadio.guests.checked = !!s.allowGuestAdd;
+
+  while (hRadio.queue.firstChild) hRadio.queue.removeChild(hRadio.queue.firstChild);
+  if (!s.queue.length) {
+    const li = document.createElement('li');
+    li.className = 'empty';
+    li.textContent = 'The queue is empty';
+    hRadio.queue.appendChild(li);
+  }
+  s.queue.forEach((q, i) => {
+    const li = document.createElement('li');
+    li.className = i === s.index ? 'current' : '';
+    li.addEventListener('click', () => radioCall('/play', { id: q.id }));
+    const name = document.createElement('span'); name.className = 'name'; name.textContent = q.title;
+    const dur = document.createElement('span'); dur.className = 'dur'; dur.textContent = q.durationMs ? fmtMs(q.durationMs) : '';
+    const rm = document.createElement('button'); rm.className = 'rm'; rm.textContent = '\u00d7'; rm.title = 'Remove';
+    rm.addEventListener('click', e => { e.stopPropagation(); radioCall('/remove', { id: q.id }); });
+    li.appendChild(name); li.appendChild(dur); li.appendChild(rm);
+    hRadio.queue.appendChild(li);
+  });
+}
+
+async function refreshRadio() {
+  try {
+    const r = await fetch(`${API}/api/radio`);
+    if (r.ok) renderRadio(await r.json());
+  } catch (e) { /* server restarting */ }
+}
+
+async function radioCall(path, body) {
+  try {
+    const r = await fetch(`${API}/api/radio${path}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { showToast(j.error || 'Radio error', 'error'); return null; }
+    renderRadio(j.state);
+    return j;
+  } catch (e) { showToast('Radio error', 'error'); return null; }
+}
+
+$('hRadioPrev').addEventListener('click', () => radioCall('/prev'));
+$('hRadioNext').addEventListener('click', () => radioCall('/next'));
+$('hRadioPlay').addEventListener('click', () => {
+  if (!radioState || radioState.status === 'playing') return radioCall('/pause');
+  return radioState.status === 'paused' ? radioCall('/resume') : radioCall('/play');
+});
+$('hRadioShuffle').addEventListener('click', () => radioCall('/settings', { shuffle: !(radioState && radioState.shuffle) }));
+$('hRadioRepeat').addEventListener('click', () => {
+  const order = ['off', 'all', 'one'];
+  radioCall('/settings', { repeat: order[(order.indexOf(radioState ? radioState.repeat : 'off') + 1) % 3] });
+});
+$('hRadioClear').addEventListener('click', () => radioCall('/clear'));
+$('hRadioQueueAll').addEventListener('click', async () => {
+  const j = await radioCall('/enqueue', { path: '/', recursive: true });
+  if (j) showToast(`Queued ${Number(j.added)} song${j.added === 1 ? '' : 's'}`);
+});
+hRadio.guests.addEventListener('change', () => radioCall('/settings', { allowGuestAdd: hRadio.guests.checked }));
+
+setInterval(() => { if (serverRunning) refreshRadio(); }, 2000);

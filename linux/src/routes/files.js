@@ -4,18 +4,21 @@ const path = require('path');
 const fs = require('fs');
 const mime = require('mime-types');
 const archiver = require('archiver');
+const auth = require('../utils/auth');
+const { collectMedia } = require('../utils/media');
+const { resolveSafePath } = require('../utils/paths');
 
-function resolveSafePath(base, reqPath) {
-  if (!base) return null;
-  const safeBase = path.resolve(base);
-  const relativePath = (reqPath || '').replace(/^[\/\\]+/, '');
-  const resolved = path.resolve(safeBase, relativePath);
-
-  const rel = path.relative(safeBase, resolved);
-  if (rel.startsWith('..') || path.isAbsolute(rel)) {
-    return null; // Path traversal attempt
-  }
-  return resolved;
+// The address the client actually reached us on. Using the connected interface's IP
+// (instead of the Host header) means VLC never has to resolve a .local name, and the
+// link is always correct for *right now*, even if the phone's IP changed since the page loaded.
+function reachableOrigin(req) {
+  let addr = (req.socket && req.socket.localAddress) || '';
+  if (addr.startsWith('::ffff:')) addr = addr.slice(7);
+  const port = (req.socket && req.socket.localPort) || '';
+  const isV4 = /^\d+\.\d+\.\d+\.\d+$/.test(addr) && !addr.startsWith('127.');
+  const protocol = req.protocol;
+  if (isV4 && port) return { protocol, host: `${addr}:${port}`, ip: addr, port };
+  return { protocol, host: req.get('host'), ip: null, port };
 }
 
 // GET /files/list?path=<subpath>
@@ -129,27 +132,92 @@ router.get('/download', (req, res) => {
   }
 });
 
-// GET /files/playlist.m3u?path=<file> — generates an M3U playlist for external players (VLC desktop)
+// GET /files/playlist.m3u?path=<file|folder>[&recursive=1] — in-memory M3U (nothing written to disk).
+// A folder becomes a playlist of its audio/video files in natural order (01, 02, … 10).
+// When a PIN is enabled every entry carries its own short-lived, path-bound token — never the PIN.
 router.get('/playlist.m3u', (req, res) => {
   const base = global.serverState.sharedDir;
-  const filePath = resolveSafePath(base, req.query.path || '');
+  const target = resolveSafePath(base, req.query.path || '');
+  if (!target || !fs.existsSync(target)) return res.status(404).end();
 
-  if (!filePath || !fs.existsSync(filePath)) return res.status(404).end();
-  
-  const fileName = path.basename(filePath);
-  const safeFileName = fileName.replace(/"/g, '');
-  const host = req.get('host');
-  const protocol = req.protocol;
-  const streamUrl = `${protocol}://${host}/files/stream?path=${encodeURIComponent(req.query.path || '')}`;
-  
-  const m3u = `#EXTM3U\n#EXTINF:-1,${fileName}\n${streamUrl}\n`;
-  
+  const rel = auth.normPath(req.query.path || '');
+  const entries = [];
+  if (fs.statSync(target).isDirectory()) {
+    collectMedia(target, rel, req.query.recursive === '1', 0, entries);
+  } else {
+    entries.push({ rel, title: path.basename(target).replace(/\.[^.]+$/, '') });
+  }
+  if (!entries.length) return res.status(404).type('text/plain').send('No audio or video files here.');
+
+  const { protocol, host } = reachableOrigin(req);
+  const pinOn = global.serverState.pinEnabled && global.serverState.pin;
+  const lines = ['#EXTM3U'];
+  for (const e of entries) {
+    const tok = pinOn ? `&t=${auth.signToken('media', auth.MEDIA_TTL, e.rel)}` : '';
+    lines.push(`#EXTINF:-1,${e.title.replace(/[\r\n]/g, ' ')}`);
+    lines.push(`${protocol}://${host}/files/stream?path=${encodeURIComponent(e.rel)}${tok}`);
+  }
+  const m3u = lines.join('\n') + '\n';
+
   res.writeHead(200, {
-    'Content-Type': 'audio/x-mpegurl',
-    'Content-Disposition': `attachment; filename="${safeFileName}.m3u"`,
+    'Content-Type': 'audio/x-mpegurl; charset=utf-8',
+    'Content-Disposition': 'inline',
+    'Cache-Control': 'no-store',
     'Content-Length': Buffer.byteLength(m3u)
   });
   res.end(m3u);
+});
+
+// GET /files/addr[?path=<p>] — where VLC should connect right now (used by the client at click time).
+// With a path (and a PIN enabled) it also returns path-bound tokens: t → stream that file,
+// pt → fetch the playlist for that file/folder. The PIN itself never goes into a VLC link.
+router.get('/addr', (req, res) => {
+  const o = reachableOrigin(req);
+  const out = { protocol: o.protocol, host: o.host };
+  if (req.query.path !== undefined && global.serverState.pinEnabled && global.serverState.pin) {
+    const rel = auth.normPath(req.query.path);
+    out.t = auth.signToken('media', auth.MEDIA_TTL, rel);
+    out.pt = auth.signToken('playlist', auth.MEDIA_TTL, rel);
+  }
+  res.set('Cache-Control', 'no-store');
+  res.json(out);
+});
+
+// GET /files/setup-vlc.bat — ONE-TIME Windows setup that registers the vlc:// link handler.
+// (VLC doesn't register vlc:// itself on desktop.) Not related to media: nothing is saved per song.
+router.get('/setup-vlc.bat', (req, res) => {
+  const ps1 = [
+    'param([string]$u)',
+    "$u = $u -replace '^vlc://',''",
+    "$u = $u -replace '^(https?)//','$1://'",
+    "if ($u -notmatch '^https?://[A-Za-z0-9.\\-:\\[\\]]+/files/stream\\?[^\\s\"]+$') { exit 1 }",
+    "$vlc = @(\"$env:ProgramFiles\\VideoLAN\\VLC\\vlc.exe\", \"${env:ProgramFiles(x86)}\\VideoLAN\\VLC\\vlc.exe\") | Where-Object { Test-Path $_ } | Select-Object -First 1",
+    "if (-not $vlc) { $d = (Get-ItemProperty 'HKLM:\\Software\\VideoLAN\\VLC' -ErrorAction SilentlyContinue).InstallDir; if ($d) { $vlc = Join-Path $d 'vlc.exe' } }",
+    "if (-not $vlc) { exit 2 }",
+    "Start-Process -FilePath $vlc -ArgumentList ('\"' + $u + '\"')"
+  ].join('\r\n');
+  const b64 = Buffer.from(ps1, 'utf16le').toString('base64');
+  const bat = [
+    '@echo off',
+    'setlocal',
+    'set "DIR=%LOCALAPPDATA%\\HosterVLC"',
+    'if not exist "%DIR%" mkdir "%DIR%"',
+    `powershell -NoProfile -Command "$b=[Convert]::FromBase64String('${b64}'); [IO.File]::WriteAllText('%DIR%\\open.ps1',[Text.Encoding]::Unicode.GetString($b),[Text.Encoding]::UTF8)"`,
+    'reg add "HKCU\\Software\\Classes\\vlc" /ve /d "URL:VLC Protocol" /f >nul',
+    'reg add "HKCU\\Software\\Classes\\vlc" /v "URL Protocol" /d "" /f >nul',
+    'reg add "HKCU\\Software\\Classes\\vlc\\shell\\open\\command" /ve /d "\\"powershell.exe\\" -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \\"%DIR%\\open.ps1\\" \\"%%1\\"" /f >nul',
+    'echo.',
+    'echo Done! "Play in VLC" buttons now open VLC directly on this PC.',
+    'echo (If your browser asks "Open powershell.exe?", tick "Always allow".)',
+    'pause'
+  ].join('\r\n');
+  res.writeHead(200, {
+    'Content-Type': 'application/octet-stream',
+    'Content-Disposition': 'attachment; filename="Hoster-VLC-Setup.bat"',
+    'Cache-Control': 'no-store',
+    'Content-Length': Buffer.byteLength(bat)
+  });
+  res.end(bat);
 });
 
 // GET /files/stream?path=<file> — inline streaming (no download dialog)

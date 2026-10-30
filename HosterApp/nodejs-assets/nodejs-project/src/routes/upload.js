@@ -3,18 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-
-function resolveSafePath(base, reqPath) {
-  if (!base) return null;
-  const safeBase = path.resolve(base);
-  const decoded = decodeURIComponent(reqPath || '');
-  const relativePath = decoded.replace(/^[\/\\]+/, '');
-  const resolved = path.resolve(safeBase, relativePath);
-
-  const rel = path.relative(safeBase, resolved);
-  if (rel.startsWith('..') || path.isAbsolute(rel)) return null;
-  return resolved;
-}
+const { resolveSafePath } = require('../utils/paths');
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {

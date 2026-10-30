@@ -1,185 +1,195 @@
-🧪 Hoster
-
 <div align="center">
 
-🚀 Hoster — Local Wi-Fi Media Server & File Hub
+# 🚀 Hoster
 
-Turn your Android device into a fast, privacy-focused local media server and file sharing portal.
+**Turn your phone (or PC) into a private Wi-Fi media server and file hub.**
+Browse files, stream lossless audio and 4K video in **VLC** with one tap, and upload — with no cloud and no cables.
 
-https://img.shields.io/badge/React_Native-20232A?style=for-the-badge&logo=react&logoColor=61DAFB
-https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white
-https://img.shields.io/badge/Express-000000?style=for-the-badge&logo=express&logoColor=white
-https://img.shields.io/badge/Android-3DDC84?style=for-the-badge&logo=android&logoColor=white
-https://img.shields.io/badge/VLC-FF8800?style=for-the-badge&logo=vlc&logoColor=white
-https://img.shields.io/badge/JavaScript-F7DF1E?style=for-the-badge&logo=javascript&logoColor=black
+[![CI](https://github.com/nexus-being-787/Hoster/actions/workflows/ci.yml/badge.svg)](https://github.com/nexus-being-787/Hoster/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Node 20+](https://img.shields.io/badge/node-%E2%89%A520-339933?logo=nodedotjs&logoColor=white)
+![Android](https://img.shields.io/badge/Android-3DDC84?logo=android&logoColor=white)
+![VLC](https://img.shields.io/badge/VLC-FF8800?logo=vlc&logoColor=white)
 
----
-
-"Share anything locally. Stream lossless media without heavy battery drain."
+*Share anything locally. Stream lossless media without heavy battery drain.*
 
 </div>
 
 ---
 
-📖 About
+## What is Hoster?
 
-Hoster is a hybrid mobile application combining React Native and an embedded nodejs-mobile Express server. It turns your Android phone into a high-speed local network server, enabling any laptop, PC, phone, or smart TV on the same Wi-Fi network to browse files, stream videos, play high-resolution audio, and upload files directly through a web browser.
+Hoster is a React Native app with an embedded [nodejs-mobile](https://github.com/nodejs-mobile/nodejs-mobile-react-native)
+Express server. It lets any laptop, PC, phone or smart TV **on the same Wi-Fi** browse your files, stream media and upload files
+through a web browser. There are also Linux and Windows desktop builds (Electron) of the same server.
 
-Key highlights:
+- 📁 **Share any folder** from your phone's storage over Wi-Fi.
+- ▶️ **One-tap VLC streaming** — files and whole folders play straight from the phone; nothing is saved to disk on the client.
+- 🔐 **Optional PIN**, brute-force lockout, and an owner-only control panel ([security model](SECURITY.md)).
+- 👥 **Connected-devices dashboard** with one-tap IP blocking.
+- 📤 **Client uploads** and a read-only/read-write **WebDAV** mode.
+- 📻 **Hoster Radio** — turn the phone into a private radio station: everyone on the Wi-Fi hears the **same song at the same moment** (silent-disco style), with a shared queue.
+- 📌 **Stable address:** `hoster.local` keeps working when your phone's IP changes; QR code for quick connect.
+- 🔋 **Keeps sharing with the screen off** (Android foreground service) and shows a notification with a **Stop sharing** button.
+- ⚡ **Zero cloud dependency** — all traffic stays on your local network; fonts are bundled, so it works fully offline.
 
-· 📁 Share local phone storage (/storage/emulated/0) over Wi-Fi.
-· 🔒 PIN Authentication for access security.
-· 👥 Connected Devices Tracker & One-Tap IP Blocking.
-· 🎧 Lossless & Heavy Format Media Streaming via .m3u playlists and external players.
-· ⚡ Zero Cloud Dependency — 100% private local network transmission.
+## How playback works (and why VLC)
 
-<div align="center">
-<img src="https://media.giphy.com/media/3o7abKhOpu0NwenH3O/giphy.gif" alt="Server On" width="400" />
-</div>
+Browsers can't natively decode high-bitrate or exotic formats such as 24-bit WAV, FLAC, ALAC or MKV — and transcoding 1080p/4K on a phone
+would overheat it and drain the battery in minutes. So Hoster **hands the stream to a real player** instead:
 
----
+1. You tap **Play in VLC** (or **VLC** in a folder to play the whole folder).
+2. The portal asks the server for the phone's *current* address and a short-lived token for that file, then opens
+   `vlc://http://<phone-ip>:<port>/files/stream?path=…&t=…`.
+3. VLC streams the file live with HTTP Range requests (seeking works) using native hardware decoding. **No `.m3u` file is downloaded**;
+   folder playlists are generated in memory.
 
-🎵 Why .m3u & External Players? (The Magic Behind Streaming)
+| Client | What happens |
+| --- | --- |
+| Android | `intent://` link opens VLC (or MX Player) directly |
+| iOS | `vlc://` opens VLC for iOS |
+| Windows | `vlc://` once you run the **one-time setup** the button offers (VLC doesn't register the link itself) |
+| Linux / macOS / anything else | The stream link is copied → VLC → <kbd>Ctrl</kbd>+<kbd>N</kbd> → paste |
 
-<div align="center">
-<img src="https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif" alt="Buffering..." width="400" />
-</div>
+The link never contains your PIN — only a token valid for that one file (24 h).
 
-❓ The Problem with Web Browsers
+## Quick start
 
-Modern web browsers (like Mobile Chrome or Safari) have strict built-in limitations. They cannot natively decode high-bitrate or specialized audio/video codecs such as 24-bit WAV, FLAC, MKV, or ALAC.
+### Run it on a computer (no phone needed)
 
-If a browser tries to play these files directly inside an HTML <video> or <audio> tag:
+```bash
+git clone https://github.com/nexus-being-787/Hoster.git
+cd Hoster
+npm install
+npm start
+```
 
-1. The media player will fail or show a disabled black screen.
-2. The browser will force the user to download the entire multi-gigabyte file before viewing.
+Open <http://localhost:9090/host>, choose a folder, press **Start**. Other devices then open the address shown (QR code included).
 
-<div align="center">
-<img src="https://media.giphy.com/media/26xBI73gWquCBBSnu/giphy.gif" alt="Browser Confused" width="300" />
-</div>
+### Build the Android app
 
-❓ Why Not Transcode on the Phone?
+Requirements: Node 20+, JDK 17, the Android SDK, optionally `adb`.
 
-Transcoding high-definition videos (e.g. 1080p/4K MKV) on-the-fly using heavy libraries like ffmpeg inside an embedded phone server would severely overheat your mobile device, drain battery within minutes, and cause severe streaming lag.
+```bash
+npm install
+(cd HosterApp && npm install)
+./build-android.sh         # bundles the JS, runs Gradle, installs over ADB if a device is connected
+```
 
-<div align="center">
-<img src="https://media.giphy.com/media/3o6Zt6ML6BklcajjsA/giphy.gif" alt="Phone Overheating" width="350" />
-</div>
+The APK lands in `release/app/` (git-ignored). Because the foreground service and bridge are native code, re-run the script after pulling
+changes — a JS-only reload won't include them. Pre-built APKs, when available, are attached to
+[GitHub Releases](https://github.com/nexus-being-787/Hoster/releases).
 
-💡 The .m3u Solution
+### Desktop apps
 
-Instead of forcing browser playback or burning out your phone's processor:
+See [`linux/README.md`](linux/README.md) and [`windows/README.md`](windows/README.md).
 
-1. Hoster generates an instant, lightweight .m3u playlist stream URL for unsupported formats.
-2. When you tap Open in External Player, your OS downloads a tiny text shortcut file (.m3u).
-3. Opening the .m3u instantly launches dedicated media players like VLC Media Player, MX Player, or IINA.
-4. VLC reads the direct HTTP stream link inside the .m3u and streams the file live from your phone using native hardware acceleration!
+## 📻 Hoster Radio — listen together, in sync
 
-<div align="center">
-<img src="https://media.giphy.com/media/xUOwGdnk7LQfBqPqY8/giphy.gif" alt="VLC Streaming" width="400" />
-</div>
+Press **Queue shared folder** in the Host UI (or **+ Add this folder** / **Add to Radio** in the portal) and the phone becomes a radio station.
+Anyone on the Wi-Fi taps **Radio → Tune in** in their browser and hears the same moment of the same song as everybody else — on their own
+phone, speaker or headphones.
 
----
+- **One shared clock.** The server keeps a single queue and playback position; every listener works out "where are we in the song" from it.
+- **Corrects for wrong clocks and Wi-Fi jitter.** Each browser estimates how far its own clock is from the host's (NTP-style, using the
+  fastest replies), then nudges its `<audio>` with an inaudible ±5 % playback-rate change for small drift, or a seek when clearly off.
+  In tests, devices whose clocks were off by up to **45 s**, with up to 120 ms of random reply delay, agreed on the playback position within **~30 ms**.
+  (That is clock agreement. Software can't measure a device's audio-output latency, so on a Bluetooth speaker use the **Speaker delay compensation** slider
+  in the panel — raise it until that device lines up with the others; it's remembered per browser.)
+- **Host controls:** play/pause, next/prev, shuffle, repeat, remove songs, clear — and an optional **"Let guests add songs"** switch (jukebox mode).
+- **Safe by design:** the station honours the PIN and lockout like everything else; stream links carry per-song tokens, never the PIN;
+  the control API is owner-only; song lengths are read from the files by the server (a guest can't make the station skip songs by lying about a duration).
+- Needs a browser that can play the file (MP3, AAC, FLAC, OGG, WAV… — not every format on every browser). Use **Play in VLC** for the rest.
 
-⚡ Key Features
+## Using Hoster
 
-· 📂 Directory Selector: Browse and share any folder on your Android phone.
-· 👥 Connected Devices Dashboard: Monitor connected clients in real-time, view connection timestamps, User-Agents, and easily Block/Disconnect unwanted IPs.
-· 🔐 Custom Security PIN: Optional 4-digit PIN protection for client access.
-· 📤 Client File Uploads: Enable connected devices to upload files back to your phone.
-· 🛠️ Mali GPU Workaround: Custom WebView rendering layer (opacity: 0.99) ensuring zero app freezes or white screens on Mali-based mobile GPUs.
+1. Open the app, pick a folder, optionally set a PIN, press **Start**.
+2. On another device open `http://hoster.local:8080` (or the IP shown as a backup, or scan the QR code).
+3. Browse, preview, download, upload (if enabled), or tap **Play in VLC**.
+4. Press **Stop** in the app — or **Stop sharing** in the notification.
 
-<div align="center">
-<img src="https://media.giphy.com/media/3ohhwoWSCtKNSH5TfW/giphy.gif" alt="Fast File Transfer" width="400" />
-</div>
+### A stable address when your IP keeps changing
 
----
+An app can't assign its own static IP, so Hoster makes the address matter less:
 
-📂 Repository Structure
+1. **Use the hostname.** `hoster.local` (or your custom name) is announced over mDNS and re-announced within seconds of an IP change.
+   Works on Windows 10/11, macOS, iOS and Linux; some Android browsers can't resolve `.local` — switch the main address to **IP** in the Host UI for those.
+2. **Reserve the IP on your router** (DHCP reservation for the phone's MAC address) — then even the IP URL never changes.
+3. **Or set a static IP on the phone**: Wi-Fi → your network → Advanced → IP settings → Static.
+
+## Security at a glance
+
+Designed for networks **you trust**. Full details and limitations in [SECURITY.md](SECURITY.md).
+
+- The Host UI and all `/api/*` endpoints work **only from the device running Hoster**; other devices get `403`.
+- A PIN protects every route that reads or writes your files (portal, viewer, PDF, uploads, WebDAV, radio). The PIN is never put in a URL — a signed session cookie takes over after one correct entry.
+  5 wrong PINs lock an address out for 5 minutes.
+- Plain HTTP by default; optional HTTPS uses a self-signed certificate. A 4-digit PIN is a courtesy lock, not strong authentication.
+- Please report vulnerabilities privately (see SECURITY.md).
+
+## Project layout
 
 ```text
 .
-├── HosterApp/                   # React Native Android host app
-│   ├── android/                 # Android Gradle project & native source
-│   ├── nodejs-assets/           # Embedded Node.js runtime code
-│   └── App.tsx                  # React Native entry point & WebView container
-├── src/                         # Core Node.js Express server
-│   ├── server.js                # Express app, WebSocket stats, IP blocklist & device tracking
-│   ├── host-ui/                 # Host dashboard web app (HTML/CSS/JS)
-│   ├── routes/                  # File browsing, downloads, upload & streaming APIs
-│   └── utils/                   # PIN authentication & network helper functions
-├── public/                      # Client web portal static frontend (HTML5 audio/video UI)
-├── release/                     # Compiled distribution releases
-│   └── app/
-│       └── Hoster-Stable.apk    # Ready-to-install Android APK
-├── build-android.sh             # Automated React Native bundle & Gradle build script
-└── README.md                    # Project documentation
+├── src/                    # ★ Node.js server — source of truth
+│   ├── server.js           #   Express app, owner-only guard, WebSocket, device tracking, IP blocklist
+│   ├── routes/             #   files (list/stream/zip/playlist), upload, view, pdf, radio
+│   ├── utils/              #   auth (PIN, lockout, tokens), radio (station state machine), duration (file lengths),
+│   │                       #   media + paths (shared folder scanning / safe paths), config, network, security
+│   └── host-ui/            #   Host dashboard (HTML/CSS/JS, bundled fonts)
+├── public/                 # ★ Client web portal — source of truth (player-links.js builds VLC links;
+│                           #   radio.js + radio-sync.js are the listener side of Hoster Radio)
+├── HosterApp/              # React Native Android app
+│   ├── App.tsx             #   boot, WebView, foreground-service sync, permission prompts
+│   ├── android/            #   Gradle project + native HosterForegroundService / bridge module
+│   └── nodejs-assets/      #   embedded Node project (mirror of src/ and public/)
+├── linux/  windows/        # Electron desktop builds (mirror of src/ and public/)
+├── test/                   # server test suite (node:test)
+├── scripts/sync-copies.js  # mirrors src/ + public/ into the builds above
+├── docs/ARCHITECTURE.md
+└── build-android.sh
 ```
 
-<div align="center">
-<img src="https://media.giphy.com/media/l0HlvtIPzPdt2usKs/giphy.gif" alt="Organized Files" width="350" />
-</div>
+`src/` and `public/` at the root are the **only** place to edit; run `npm run sync` to update the mirrors.
 
----
-
-🎯 Purpose
-
-The goal of Hoster is to:
-
-· 🚀 Provide lightning-fast local file transfers without cables or cloud storage.
-· 📺 Enable lossless streaming of large video/audio libraries to PCs and TVs.
-· 🔐 Maintain complete privacy by keeping all traffic within your local Wi-Fi.
-· ⚡ Eliminate phone overheating by smart .m3u stream handoffs to native decoders.
-
-<div align="center">
-<img src="https://media.giphy.com/media/3o7TKMt1VVNkHV2PaE/giphy.gif" alt="No Cloud Needed" width="400" />
-</div>
-
----
-
-⚡ Philosophy
-
-Keep data local.
-
-Stream raw quality.
-
-Offload heavy work to native decoders.
-
-Build clean, reliable tools.
-
-<div align="center">
-<img src="https://media.giphy.com/media/l3q2K5jinAlChoCLS/giphy.gif" alt="Zen Philosophy" width="350" />
-</div>
-
----
-
-🚀 Building & Installation
-
-To build and deploy the app directly to a connected Android device via ADB:
+## Development
 
 ```bash
-# Make the build script executable and run it
-chmod +x build-android.sh
-./build-android.sh
+npm test               # server + front-end suites (a few minutes). Starts real servers on free ports.
+                       # (some duration tests use ffmpeg and are skipped if it isn't installed)
+npm run sync           # mirror src/ + public/ into linux/, windows/ and the Android project
+npm run sync:check     # CI check: fails if a mirror is stale
+HOSTER_TEST_ROOT=$PWD/linux npm test    # run the same tests against a shipped copy
+
+cd HosterApp && npm ci --ignore-scripts && npx tsc --noEmit && npx jest   # mobile app
 ```
 
-Pre-compiled APK location:
-release/app/Hoster-Stable.apk
+CI runs all of this on Node 20 and 22. It can't build or run the Android APK — please state which device you tested on in pull requests.
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-<div align="center">
-<img src="https://media.giphy.com/media/3oKIPEqDGUULpEU0aQ/giphy.gif" alt="Building" width="350" />
-</div>
+## Roadmap
 
----
+Ideas that would make good contributions (not yet implemented):
 
-<div align="center">
+- [x] ~~Queue / shuffle and a "now playing" view~~ → shipped as Hoster Radio
+- [ ] Radio: automatic latency calibration (mic-based "clap test"), vote-to-skip, and a "play the radio in VLC" link
+- [ ] Subtitle auto-attach (`.srt`) for videos; cover art and thumbnails
+- [ ] Search, sort and pagination for very large folders
+- [x] ~~Keep the PIN out of ZIP / viewer / media URLs~~ → session cookie
+- [ ] Opt-in auto-resume after reboot / Wi-Fi reconnect
+- [ ] Android: automated instrumentation tests; publish signed APKs on GitHub Releases / F-Droid
+- [ ] Per-device PINs or one-time pairing instead of a shared 4-digit PIN
 
-⭐ Thanks for using Hoster!
+## Philosophy
 
-<div>
-<img src="https://media.giphy.com/media/g9582DNuQppxC/giphy.gif" alt="Thank You" width="400" />
-</div>
+Keep data local. Stream raw quality. Offload heavy work to native decoders. Build clean, reliable tools.
 
-Happy hosting & streaming! 🚀
+## Contributing
 
-</div>
+Issues and pull requests are welcome — start with [CONTRIBUTING.md](CONTRIBUTING.md). Please be kind
+([Code of Conduct](CODE_OF_CONDUCT.md)).
+
+## License
+
+[MIT](LICENSE). Bundled fonts (Outfit, JetBrains Mono) are licensed under the SIL Open Font License 1.1 —
+see the `fonts/` folders.

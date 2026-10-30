@@ -5,7 +5,10 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node --watch src/server.js"
+    "dev": "node --watch src/server.js",
+    "test": "node --test test/*.test.js",
+    "sync": "node scripts/sync-copies.js",
+    "sync:check": "node scripts/sync-copies.js --check"
   },
   "dependencies": {
     "archiver": "^7.0.1",
@@ -14,18 +17,35 @@
     "ip": "^2.0.1",
     "mime-types": "^2.1.35",
     "multer": "^1.4.5-lts.1",
+    "music-metadata": "7.14.0",
     "qrcode": "^1.5.4",
     "selfsigned": "^5.5.0",
     "webdav-server": "^2.6.3",
     "ws": "^8.17.1"
   },
   "keywords": [
+    "android",
     "file-server",
     "local-network",
     "mobile",
-    "android",
+    "nodejs-mobile",
+    "react-native",
+    "streaming",
+    "vlc",
+    "webdav",
     "wi-fi"
   ],
   "author": "Hoster",
-  "license": "MIT"
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nexus-being-787/Hoster.git"
+  },
+  "bugs": {
+    "url": "https://github.com/nexus-being-787/Hoster/issues"
+  },
+  "homepage": "https://github.com/nexus-being-787/Hoster#readme"
 }
