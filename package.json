@@ -21,7 +21,7 @@
     "qrcode": "^1.5.4",
     "selfsigned": "^5.5.0",
     "webdav-server": "^2.6.3",
-    "ws": "^8.17.1"
+    "ws": "^8.22.0"
   },
   "keywords": [
     "android",
